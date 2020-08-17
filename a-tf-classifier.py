@@ -7,6 +7,10 @@ import tkinter as tk
 import tkinter.ttk as ttk
 
 from tkinter import filedialog
+
+from PIL import Image as PIL_Image
+from PIL import ImageTk as PIL_Image_tk
+
 # for getcwd
 import os
 
@@ -43,10 +47,60 @@ class ScrollableCanvas(tk.Frame):
         _pack('self.sbH -> side = bottom ; fill = x', locals())
         _pack('self.c -> side = left ; expand = 1 ; fill = both', locals())
         self.c.bind('<Configure>',self.eventConfigure)
+        self.c.bind('<Map>',self.eventMap)
+        self.isMapped = 0
         #print('a scrollable canvas created',self.c.bbox('all'))
     def eventConfigure(self,e):
         self.c['scrollregion'] = self.c.bbox('all')
-        #print('a scrollable canvas created2',self.c['scrollregion'])
+       # print('ScrollableCanvas->eventConfigure',self.c['scrollregion'])
+    def eventMap(self,e):
+        self.W, self.H = self.c.winfo_width() , self.c.winfo_height()
+        #print('ScrollableCanvas->eventMap',e.width,e.height,e.x,e.y,self.c.winfo_ismapped(),self.c.winfo_viewable(),self.c.winfo_width())
+class Gallery:
+
+    def __init__(self,**kwargs):
+
+        on = self.on = kwargs.pop('on',False)
+        if  on == False:
+            raise('Missing on= ... option')
+            return
+        if 'c' not in vars(on):
+            raise('Missing "self.c" / "c" instance variable in "{}"'.format(on))
+            return
+        self.c = on.c
+        self.imageCount = 0 ; self.rowCount = 0 ; self.colCount = 0 ; self.imageObject = dict() ; self.imageThumb = dict() ; self.imageTk = dict()
+        self.lastWidth = 1 ; self.lastHeight = 1 ; self.padx = 20 ;
+    def loadFromFilename(self,fname):
+        pass
+
+    def loadFromDir(self,path):
+        print('loadFromDir ->',path)
+        fileNames = os.listdir(path)
+        fileNamesAndPaths = list(zip(fileNames, list(map(lambda i, path = path: os.path.join(path,i), fileNames ))))
+        fileNamesLen = len(fileNames)
+
+
+        x,y = list(range(0,self.on.W,100+self.padx )) , 0
+        canFitCols = len(x)
+        canFitRows = fileNamesLen / canFitCols
+        print ('canFitCols->',canFitCols, 'math->',self.on.W / (100+self.padx),'x',x)
+
+        startI, colCount = 0, 0
+
+        while (canFitRows > 0):
+            colCount = 0
+            for fileName, filePath in fileNamesAndPaths[startI:startI+canFitCols]:
+                #print(fileName,filePath)
+                self.imageObject[fileName] = PIL_Image.open(filePath)
+                self.imageThumb[fileName] = self.imageObject[fileName].thumbnail((50,50))
+                self.imageTk[fileName] = PIL_Image_tk.PhotoImage( image = self.imageObject[fileName] )
+                self.c.create_image(x[colCount],y, image = self.imageTk[fileName])
+                colCount += 1
+                self.imageCount += 1
+            y += 120
+            canFitRows -= 1
+            startI += canFitCols
+            #print()
 
 # disable the widget if no path is set
 class APathLabel(tk.Frame):
@@ -65,8 +119,8 @@ class APathLabel(tk.Frame):
     def config(self, **kwargs):
         text = kwargs.pop('text',False)
         self._enable()
-        call, text = [(self._disable,self.disabledText),(self._enable,text)][bool(text)]
-        print('+',call,text)
+        call, text = [(self._disable,self.disabledText),(self._enable,'"{}"'.format(text))][bool(text)]
+        #print('APathLabel -> config',call,text)
         call()
         self.l2['text'] = text
 
@@ -105,14 +159,19 @@ def _browseToDir(_dir,_title):
 # File -> (index 0) ; of validation and training dirs
 def _getParentDir():
     path = _browseToDir(os.getcwd(), fileMenu.entrycget(0,'label'))
-    pathFrame.config(text = '"{}"'.format(path))
-    if not pathFrame.disabled:
-        _all = os.listdir(path)
-        a = _all[0]
-        b = _all[1]
-        # remove everything after "dataset"
-        oneFrame['text'] = " ".join (str.split(oneFrame['text'])[:3] + ['"{}"'.format(a)])
-        twoFrame['text'] = " ".join (str.split(oneFrame['text'])[:3] + ['"{}"'.format(b)])
+    pathFrame.config(text = path)
+    if pathFrame.disabled:
+        return
+    _all = os.listdir(path)
+    a = _all[0]
+    b = _all[1]
+    # remove everything after "dataset"
+    oneFrame['text'] = " ".join (str.split(oneFrame['text'])[:3] + ['"{}"'.format(a)])
+    twoFrame['text'] = " ".join (str.split(oneFrame['text'])[:3] + ['"{}"'.format(b)])
+
+    fullA, fullB = [os.path.join(path, i) for i in [a , b]]
+    oneGallery.loadFromDir(fullA)
+
 
 
 # root window
@@ -156,6 +215,8 @@ _pack('pathFrame -> side = top ; fill = x')
 oneFrame = ttk.LabelFrame(zeroFrame,text = 'Training Images dataset')
 oneScrollable = ScrollableCanvas(oneFrame, pack = 'expand = 1 ; fill = both')
 _pack('oneFrame -> expand = 1 ; fill = both')
+
+oneGallery = Gallery(on=oneScrollable)
 
 # validation
 twoFrame = ttk.LabelFrame(zeroFrame,text = 'Validation Images dataset')
