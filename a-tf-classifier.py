@@ -5,6 +5,7 @@
 #-------------------------------------------------------------------------------
 import tkinter as tk
 import tkinter.ttk as ttk
+import math
 
 from tkinter import filedialog
 from tkinter import messagebox
@@ -16,7 +17,7 @@ for i in 'x bottom left right top y both'.split():
     exec(f'{i.upper()}=i')
     #globals()[i.capitalize()]=eval(f'tk.{i}')
 BLUE,RED,YELLOW,GREEN = 'blue red yellow green'.split()
-put(X)
+
 # for getcwd
 import os
 
@@ -56,12 +57,12 @@ class ScrollableCanvas(tk.Frame):
     def __init__(self,master, **kwargs):
 
         super().__init__(master, *kwargs)
-        self.config(bg=GREEN)
+
         self.attr=dict(parent=master)
 
         self.SBV = Packer(ttk.Scrollbar(master,orient = 'vertical'),'side = right ; fill = y',show=1)
         self.SBH = Packer(ttk.Scrollbar(master,orient = 'horizontal'),'side = bottom ; fill = x',show=1)
-        self.C = Packer(tk.Canvas(master,bg = 'blue'),'side = left ; expand = 1 ; fill = both',show=1)
+        self.C = Packer(tk.Canvas(master),'side = left ; expand = 1 ; fill = both',show=1)
 
         self.sbV=self.SBV.widget
         self.sbH=self.SBH.widget
@@ -134,34 +135,51 @@ class Gallery:
         self.on._bind(self.on.c,configure_=self.moved)
         self.varProg = 0
     def moved(self,e):
-        if ('W') not in vars(self.on):
-            put('NOT')
+        if ('W') not in vars(self.on) or self.imageCount == 0:
             return
-        if self.imageCount == 0 or (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
-            put('NOT2')
+        #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
+        if self.on.W > self.lastWidth and (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
             return
-
-        X,Y,LenX,LenY = self.grid(self.imageCount)
-        startI, colCount = 0, 0
+        put('moved->grid')
+        X,Y,LenX,LenY,count = self.getGrid(self.imageCount)
+        #put(Y)
+        startI=0
+        myc=0
 
         self.lastWidth, self.lastHeight = self.on.W, self.on.H
         #gen = (img for img )
+        #print(f'X {X} * Y {Y} = {len(X)*len(Y)} ;')
         for _y in Y:
-            for _x,icount  in zip(X[startI:startI+LenX],self.icountrange[startI:startI+LenX]):
-                self.on.c.moveto('i%d'%icount,_x, _y)
-                #put(f'moving f{icount} to {_x},{_y}')
+            #
+            for _x,icount  in zip(X,count[startI:startI+LenX]):
+                tag='i%d'%icount
 
+
+                #put(f'count {icount}; --> x {_x}; y {_y}; ')
+                self.on.c.moveto('i%d'%icount,_x, _y)
+                #put(f'moving  {tag} == i{self.on.c.find_withtag(tag)} to {_x},{_y}')
+            put()
+            #print(f'MYC = {myc} {X},{count[startI:startI+LenX]}')
             startI += LenX
+
+            myc+=1
+        self.icountrange=count
         self.on.updatesregion()
-    def grid(self,_len):
-        #
-        x, y = list(range(0, self.on.W, self.thumbW + self.padX )), 0
+    def getGrid(self,_len):
+        #put('->grid')
+        x = list(range(0, self.on.W, self.thumbW + self.padX ))
         lenX = len(x)
+
         if len(x) == 0:
             x = 1
             print('grid-> len(x) == 0; Automatically set to 1')
-        y = list(range(0, _len*(self.thumbH+self.padY),self.thumbH + self.padY))
-        return [x,y,lenX,len(y)]
+        #put(f'ROWs {(_len/lenX)}')
+        y = list(range(0, (int(math.ceil(_len/lenX)))*(self.thumbH + self.padY),self.thumbH + self.padY))
+        lenY = len(y)
+        count = list(range(_len))
+        #put(f'total = {_len} ; {lenX} x {lenY} ; ')
+        #put(f'X---{x}----Y----{y}')
+        return [x,y,lenX,lenY,count]
     def loadFromFilename(self,fname):
         pass
 
@@ -172,8 +190,8 @@ class Gallery:
 
         _len = len(fileNames)
 
-        X,Y,LenX,LenY = self.grid(_len)
-        self.icountrange = range(_len)
+        X,Y,LenX,LenY,self.icountrange = self.getGrid(_len)
+
         #put(f'{X}----{Y}----{LenX}----{LenY}-----')
         #put ('canFitCols->',LenX, 'math->',self.on.W / (self.thumbW+self.padX),'x ranges',X)
 
@@ -189,7 +207,7 @@ class Gallery:
                 self.imageObject[icount] = PIL_Image.open(filePath)
                 self.imageThumb[icount] = self.imageObject[icount].thumbnail((self.thumbW,self.thumbH))
                 self.imageTk[icount] = PIL_Image_tk.PhotoImage( image = self.imageObject[icount] )
-                self.on.c.create_image(_x, _y, anchor ='nw', image = self.imageTk[icount],tag='i%d'%self.imageCount)
+                self.on.c.create_image(_x, _y, anchor ='nw', image = self.imageTk[icount],tag='i%d'%icount)
                 #self.on.c.create_text(_x, _y, text = f'{_x,_y}')
 
             startI += LenX
@@ -313,7 +331,7 @@ main['menu']=rootMenu
 
 # size grip
 grip = ttk.Sizegrip(main)
-grip.pack(side = BOTTOM , fill = X)
+grip.pack(side = TOP , fill = X)
 
 
 # root window 'body' frame
@@ -352,6 +370,6 @@ scrollfor02 = ScrollableCanvas(frane02); frane02.pack(expand = 1, fill = BOTH)
 #_makeABanner(frame01, 'Training Data')
 main.title('A TF Classifier')
 
-
+main.wm_attributes('-top',1)
 _center(main)
 main.mainloop()
