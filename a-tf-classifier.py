@@ -11,6 +11,8 @@ from tkinter import filedialog
 from PIL import Image as PIL_Image
 from PIL import ImageTk as PIL_Image_tk
 
+put = print
+
 # for getcwd
 import os
 
@@ -50,6 +52,7 @@ class ScrollableCanvas(tk.Frame):
         self.c.bind('<Map>',self.eventMap)
         self.isMapped = 0
         #print('a scrollable canvas created',self.c.bbox('all'))
+
     def eventConfigure(self,e):
         self.c['scrollregion'] = self.c.bbox('all')
        # print('ScrollableCanvas->eventConfigure',self.c['scrollregion'])
@@ -60,46 +63,68 @@ class Gallery:
 
     def __init__(self,**kwargs):
 
-        on = self.on = kwargs.pop('on',False)
-        if  on == False:
+        self.on = kwargs.pop('on',False)
+        if  self.on == False:
             raise('Missing on= ... option')
             return
-        if 'c' not in vars(on):
-            raise('Missing "self.c" / "c" instance variable in "{}"'.format(on))
+        if 'c' not in vars(self.on):
+            raise('Missing "self.c" / "c" instance variable in "{}"'.format(self.on))
             return
-        self.c = on.c
-        self.imageCount = 0 ; self.rowCount = 0 ; self.colCount = 0 ; self.imageObject = dict() ; self.imageThumb = dict() ; self.imageTk = dict()
-        self.lastWidth = 1 ; self.lastHeight = 1 ; self.padx = 20 ;
+
+        self.thumbW, self.thumbH = (50, 50)
+        self.imageCount , self.rowCount , self.colCount = 0 , 0 , 0
+        self.imageObject , self.imageThumb , self.imageTk = dict() , dict() , dict()
+        self.lastWidth , self.lastHeight , self.padX , self.padY = 1, 1, 20, 20
+        self.on.c.bind('<Configure>',self.moved,add=1)
+        self.varProg = 0
+    def moved(self,e):
+        pass
+        #if ('W') not in vars(self.on):
+        #    put('NOT')
+        #    return
+        #put(f'moved self.on.W {oneScrollable.winfo_width()}--- self.lastWidth {self.lastWidth} ------')
+        #if (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
+        #    return
+    def grid(self,_len):
+        #
+        x, y = list(range(0, self.on.W, self.thumbW + self.padX )), 0
+        lenX = len(x)
+        if len(x) == 0:
+            x = 1
+            print('grid-> len(x) == 0; Automatically set to 1')
+        y = list(range(0, _len*(self.thumbH+self.padY),self.thumbH + self.padY))
+        return [x,y,lenX,len(y)]
     def loadFromFilename(self,fname):
         pass
 
     def loadFromDir(self,path):
         print('loadFromDir ->',path)
         fileNames = os.listdir(path)
-        fileNamesAndPaths = list(zip(fileNames, list(map(lambda i, path = path: os.path.join(path,i), fileNames ))))
-        fileNamesLen = len(fileNames)
+        filePaths = list(map(lambda i, path = path: os.path.join(path,i), fileNames ))
 
+        _len = len(fileNames)
 
-        x,y = list(range(0,self.on.W,100+self.padx )) , 0
-        canFitCols = len(x)
-        canFitRows = fileNamesLen / canFitCols
-        print ('canFitCols->',canFitCols, 'math->',self.on.W / (100+self.padx),'x',x)
+        X,Y,LenX,LenY = self.grid(_len)
+
+        #put(f'{X}----{Y}----{LenX}----{LenY}-----')
+        #put ('canFitCols->',LenX, 'math->',self.on.W / (self.thumbW+self.padX),'x ranges',X)
 
         startI, colCount = 0, 0
 
-        while (canFitRows > 0):
-            colCount = 0
-            for fileName, filePath in fileNamesAndPaths[startI:startI+canFitCols]:
-                #print(fileName,filePath)
+        self.lastWidth, self.lastHeight = self.on.W, self.on.H
+        for _y in Y:
+
+            for fileName, _x, filePath  in zip(fileNames[startI:startI+LenX],X,filePaths[startI:startI+LenX] ):
+
+                #print(f'fileName ---{filePath}---{_y}---{_x}---{self.imageCount}---')
                 self.imageObject[fileName] = PIL_Image.open(filePath)
-                self.imageThumb[fileName] = self.imageObject[fileName].thumbnail((50,50))
+                self.imageThumb[fileName] = self.imageObject[fileName].thumbnail((self.thumbW,self.thumbH))
                 self.imageTk[fileName] = PIL_Image_tk.PhotoImage( image = self.imageObject[fileName] )
-                self.c.create_image(x[colCount],y, image = self.imageTk[fileName])
-                colCount += 1
+                self.on.c.create_image(_x, _y, image = self.imageTk[fileName])
+                #self.on.c.create_text(_x, _y, text = f'{_x,_y}')
                 self.imageCount += 1
-            y += 120
-            canFitRows -= 1
-            startI += canFitCols
+
+            startI += LenX
             #print()
 
 # disable the widget if no path is set
@@ -214,11 +239,17 @@ _pack('pathFrame -> side = top ; fill = x')
 # train data gallery
 oneFrame = ttk.LabelFrame(zeroFrame,text = 'Training Images dataset')
 oneScrollable = ScrollableCanvas(oneFrame, pack = 'expand = 1 ; fill = both')
-_pack('oneFrame -> expand = 1 ; fill = both')
-
+oneProgressFrame = tk.Frame(oneFrame,bg='red',bd=10)
 oneGallery = Gallery(on=oneScrollable)
 
-# validation
+oneProgress = ttk.Progressbar(oneProgressFrame,orient = 'horizontal',variable = oneGallery.varProg)
+#_pack('oneProgress -> side = top ; expand = 1 ; fill = x')
+_pack('oneProgressFrame -> side = top ; expand = 1 ; fill = x')
+_pack('oneFrame -> expand = 1 ; fill = both')
+
+
+
+# validation gallery
 twoFrame = ttk.LabelFrame(zeroFrame,text = 'Validation Images dataset')
 twoScrollable = ScrollableCanvas(twoFrame, pack = 'expand = 1 ; fill = both')
 _pack('twoFrame -> expand = 1 ; fill = both')
