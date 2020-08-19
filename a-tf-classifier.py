@@ -287,17 +287,27 @@ class LabelAB(tk.Frame):
 
 #asses path from the dialog
 class Path:
-    def __init__(self,path=None):
+    def __init__(self,control=None,path=None):
+        if control is None:
+            raise('control=... is empty')
+            return
+        self.yes='\u2714'
+        self.no='\u274c'
+
+        self.tree=control
+
         self.havet = dict()
         self.havev = dict()
         self.missingboth = dict()
+
+        self.where=dict()
         if path:
-            self.probe(path)
-    def propbe(self,path):
+            self.setpath(path)
+    def setpath(self,path):
         _classes = os.listdir(path)
         _classes = [i for i in _classes if os.path.isdir( os.path.join(path,i) )]
-        print(f'{_classes =}')
-        print()
+        #print(f'{_classes =}')
+        #print()
         _class_info = {_class : {'path' : _path} for _class,_path in zip(_classes,[os.path.join(path,i) for i in _classes ])}
         todel=[]
         def markandcopy(item,to,key):
@@ -315,6 +325,39 @@ class Path:
         for k in todel:
             del _class_info[k]
         self.missingboth=_class_info
+        self.updatetree()
+    def updatetree(self):
+        if not self.tree.get_children():
+            self.init()
+        keys=[]
+        #for i in self.colnames:
+        #    main=getattr(self,i)
+        #    keys.extend([(i,key) for key in main.keys()])
+        for key in self.havet.keys():
+            keys.append((key,self.no,self.yes))
+            self.where[key]='havet'
+        for key in self.havev.keys():
+            keys.append((key,self.yes,self.no))
+            self.where[key]='havev'
+        for key in self.missingboth.keys():
+            keys.append((key,self.no,self.no))
+            self.where[key]='missingboth'
+
+        keys.sort(key=lambda x:x[0])
+        self.keys=keys
+        print(f'{keys=}')
+        for k in keys:
+            self.tree.insert('','end',values=k)
+    def init(self):
+        t=self.tree
+        self.cols=[0,1,2]
+        t.config(columns=self.cols)
+        t.column('#0',width=0,stretch=0)
+        for i,c in zip('Classes Has*Validation Has*Training'.split(),self.cols):
+            i = i.replace('*',' ')
+            t.heading(c,anchor='center',text=i)
+            t.column(c,minwidth=10,width=70,anchor='center')
+            print(c)
         #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
 def _center(w):
     w.geometry('+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)))
@@ -354,7 +397,7 @@ def _getParentDir():
 
     fullA, fullB = [os.path.join(path, i) for i in [a , b]]
     gfor01.loadFromDir(fullA)
-    Gpath.setpath(path)
+    Tpath.setpath(path)
 
 
 # root window
@@ -445,7 +488,7 @@ entryfor0.bind('<Key-Return>',debug)
 
 # parent path
 (frame00 := LabelAB(Top)).grid(row=2,column=0,columnspan=2,sticky='nswe')
-Gpath=Path()
+Tpath=Path(control=tree)
 
 #train frame
 (frame01 := ttk.LabelFrame(Top,text=_textcenter('Training Images dataset'))).grid(row=2,column=0,columnspan=2,sticky='nswe')
