@@ -7,6 +7,9 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import math
 
+import time
+import threading
+
 from tkinter import filedialog
 from tkinter import messagebox
 from PIL import Image as PIL_Image
@@ -48,17 +51,18 @@ class Packer:
             return
         self.widget.pack_forget()
         self.on=0
+        return self.widget
     def show(self):
 
         self.widget.pack_configure(self.args)
         self.on=1
-
+        return self.widget
 class ScrollableCanvas(tk.Frame):
     def __init__(self,master, **kwargs):
 
         super().__init__(master, *kwargs)
-
-        self.attr=dict(parent=master)
+        self.parent=master
+        self.attr=dict()
 
         self.SBV = Packer(ttk.Scrollbar(master,orient = 'vertical'),'side = right ; fill = y',show=1)
         self.SBH = Packer(ttk.Scrollbar(master,orient = 'horizontal'),'side = bottom ; fill = x',show=1)
@@ -115,15 +119,21 @@ class ScrollableCanvas(tk.Frame):
         self.c.config(scrollregion=(self.c.bbox(lsttag if lsttag else 'all')) if bbox else (lsttag))
 class Gallery:
 
-    def __init__(self,**kwargs):
+    def __init__(self,**kw):
 
-        self.on = kwargs.pop('on',False)
+        self.on = kw.pop('on',False)
+
         if  self.on == False:
             raise('Missing on= ... option')
             return
         if 'c' not in vars(self.on):
             raise('Missing "self.c" / "c" instance variable in "{}"'.format(self.on))
             return
+        #if 'progress' in kw and kw.pop('progress',0):
+        #    self.pval=0
+        #    self.Progress=Packer(ttk.Progressbar(self.on.parent.winfo_parent(),orient = 'horizontal',variable = self.pval, value=30), 'side = top;  fill = x')
+        #    self.progress=self.Progress.show()
+
 
         self.thumbW, self.thumbH = (50, 50)
         self.imageCount , self.rowCount , self.colCount = 0 , 0 , 0
@@ -132,39 +142,56 @@ class Gallery:
         self.counttofname=dict()
         self.icountrange=[]
         # _ means add=1
-        self.on._bind(self.on.c,configure_=self.moved)
+        self.on._bind(self.on.c,configure_=self.startmoved)
         self.varProg = 0
-    def moved(self,e):
-        if ('W') not in vars(self.on) or self.imageCount == 0:
+
+    def novar(self,name):
+        return name not in vars(self.on)
+
+    def startmoved(self,e):
+        if self.novar('W') or self.imageCount == 0:
             return
         #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
         if self.on.W > self.lastWidth and (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
             return
-        put('moved->grid')
+        self.Tmove = threading.Thread(target=self.moved,args=(e,))
+        #print(f'started thread {self.Tmove}')
+        self.Tmove.start()
+
+    def moved(self,e):
+        prog0.config(value=0)
+
+        #put('moved->grid')
         X,Y,LenX,LenY,count = self.getGrid(self.imageCount)
         #put(Y)
         startI=0
         myc=0
-
+        prog0.config()
         self.lastWidth, self.lastHeight = self.on.W, self.on.H
         #gen = (img for img )
         #print(f'X {X} * Y {Y} = {len(X)*len(Y)} ;')
         for _y in Y:
             #
             for _x,icount  in zip(X,count[startI:startI+LenX]):
+                print(f'no of alive threads {threading.active_count():>10}')
+                if threading.currentThread() != self.Tmove:
+                    print('stopped')
+                    return
+                prog0.step()
                 tag='i%d'%icount
 
 
                 #put(f'count {icount}; --> x {_x}; y {_y}; ')
                 self.on.c.moveto('i%d'%icount,_x, _y)
                 #put(f'moving  {tag} == i{self.on.c.find_withtag(tag)} to {_x},{_y}')
-            put()
+            #put()
             #print(f'MYC = {myc} {X},{count[startI:startI+LenX]}')
             startI += LenX
 
             myc+=1
         self.icountrange=count
         self.on.updatesregion()
+        #print(f'Thread {threading.currentThread()} Finished')
     def getGrid(self,_len):
         #put('->grid')
         x = list(range(0, self.on.W, self.thumbW + self.padX ))
@@ -182,8 +209,10 @@ class Gallery:
         return [x,y,lenX,lenY,count]
     def loadFromFilename(self,fname):
         pass
-
     def loadFromDir(self,path):
+        print('Parent',threading.currentThread())
+        threading.Thread(target=self.loadFromDir_,args=(path,)).start()
+    def loadFromDir_(self,path):
         print('loadFromDir ->',path)
         fileNames = os.listdir(path)
         filePaths = list(map(lambda i, path = path: os.path.join(path,i), fileNames ))
@@ -194,7 +223,7 @@ class Gallery:
 
         #put(f'{X}----{Y}----{LenX}----{LenY}-----')
         #put ('canFitCols->',LenX, 'math->',self.on.W / (self.thumbW+self.padX),'x ranges',X)
-
+        prog0.config(maximum=_len)
         startI, colCount = 0, 0
 
         self.lastWidth, self.lastHeight = self.on.W, self.on.H
@@ -208,6 +237,8 @@ class Gallery:
                 self.imageThumb[icount] = self.imageObject[icount].thumbnail((self.thumbW,self.thumbH))
                 self.imageTk[icount] = PIL_Image_tk.PhotoImage( image = self.imageObject[icount] )
                 self.on.c.create_image(_x, _y, anchor ='nw', image = self.imageTk[icount],tag='i%d'%icount)
+                prog0.step()
+                print(threading.currentThread())
                 #self.on.c.create_text(_x, _y, text = f'{_x,_y}')
 
             startI += LenX
@@ -302,7 +333,7 @@ def _getParentDir():
     #twoFrame['text'] = " ".join (str.split(frame01['text'])[:3] + ['"{}"'.format(b)])
 
     fullA, fullB = [os.path.join(path, i) for i in [a , b]]
-    gfor01.loadFromDir(fullA)
+    gfor01.loadFromDir(fullB)
 
 
 
@@ -353,9 +384,10 @@ frame00 = LabelAB(frame0); frame00.pack(side = TOP , fill = X)
 frame01 = ttk.LabelFrame(frame0,text='Training Images dataset') ; frame01.pack(expand = 1 , fill = BOTH)
 scrollfor01 = ScrollableCanvas(frame01); scrollfor01.pack(expand = 1, fill = BOTH)
 #oneProgressFrame = tk.Frame(frame01,bg='red',bd=10)
-gfor01 = Gallery(on=scrollfor01)
+gfor01 = Gallery(on=scrollfor01,progress=1)
 
-#oneProgress = ttk.Progressbar(oneProgressFrame,orient = 'horizontal',variable = oneGallery.varProg)
+varprog0 = tk.IntVar()
+prog0=ttk.Progressbar(frame0,orient = 'horizontal',variable = varprog0, value=30); prog0.pack(expand = 1 , fill = X)
 #_pack('oneProgress -> side = top ; expand = 1 ; fill = x')
 #_pack('oneProgressFrame -> side = top ; expand = 1 ; fill = x')
 #_pack('frame01 -> expand = 1 ; fill = BOTH')
