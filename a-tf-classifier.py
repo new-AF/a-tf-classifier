@@ -299,17 +299,79 @@ class Path:
         self.havet = dict()
         self.havev = dict()
         self.missingboth = dict()
+        self.empty=dict()
 
         self.where=dict()
+        self.tags=dict()
         if path:
             self.setpath(path)
     def setpath(self,path):
-        _classes = os.listdir(path)
-        _classes = [i for i in _classes if os.path.isdir( os.path.join(path,i) )]
-        #print(f'{_classes =}')
+        _fnames = os.listdir(path)
+        _files = [i for i in _fnames if os.path.isdir( os.path.join(path,i) )]
+        #print(f'{_files =}')
         #print()
-        _class_info = {_class : {'path' : _path} for _class,_path in zip(_classes,[os.path.join(path,i) for i in _classes ])}
+        _class_info = {_class : {'path' : _path} for _class,_path in zip(_files,[os.path.join(path,i) for i in _files ])}
+
+        ##
+        experiment = 0
+        if experiment:
+            _names = os.listdir(path)
+            _namepaths = list(map(lambda x: os.path.join(path,x),_names))
+            _zip = list(filter(lambda x: os.path.isdir(x[1]), zip(_names,_namepaths)  ))
+
+            _d1 = {n : {
+                    'path':p,
+                    'all':os.listdir(p),
+                    'v_listing':None,
+                    't_listing':None,
+                    'v':None,
+                    't':None,
+                    'all_len':None,
+                    'v_len':None,
+                    't_len':None,
+                    'tag':None,
+                    'values':None
+                    } for n,p in _zip}
+
+            def hasValidation(n,dirname):
+                _d1[n]['v'] = dirname
+                #print('hasVVV')
+                #print ('->>>',_d1[n])
+                return 1
+
+            def hasTraining(n,dirname):
+                #print('hasTTT')
+                _d1[n]['t'] = dirname
+                print ('->>>',_d1[n])
+                return 1
+            #print(f'{_d1 =}')
+            for n,_d in _d1.items():
+                p = _d['path']
+                if [ i for  i in _d['all'] if i.lower() == 'validation' and os.path.isdir(os.path.join(p,i) ) and hasValidation(n,i)]: #unix shenanigs if multiple variations of 'validation' exist, last dir (set via hasValidation) will be use
+                    tmp=list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(os.path.join(p,_d1[n]['v'])) ) )
+                    _d[n]['v_listing']=tmp
+                    _d[n]['v_len']=len(tmp)
+                if [ i for i in _d['all'] if i.lower() == 'training' and os.path.isdir( os.path.join(p,i) ) and hasTraining(n,i) ]:
+                    tmp=list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(os.path.join(p,_d1[n]['t'])) ) )
+                    _d[n]["t_listing"]=tmp
+                    _d[n]['t_len']=len(tmp)
+
+                if _d[n]['t'] and _d[n]['t']:
+                    _d[n]['all']=[]
+        #for k,v in _d1.items():
+        #    print(f'{k=} {v=}\\n\n')
+        #print(f'{_dnames =} {_dpaths =}')
+        ##
+
+        for k in dict(_class_info):
+            _path=_class_info[k]['path']
+            _class_info[k]['filenames']= list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(_path) ) )
+            _class_info[k]['nonempty'] = ( tmp:= len(_class_info[k]['filenames']) )
+            if not tmp:
+                self.empty[k] = _class_info[k]
+                del _class_info[k]
         todel=[]
+
         def markandcopy(item,to,key):
             if key not in getattr(self):
                 getattr(self,key)[key]=dict(path=_class_info['path'])
@@ -330,35 +392,60 @@ class Path:
         if not self.tree.get_children():
             self.init()
         keys=[]
-        #for i in self.colnames:
-        #    main=getattr(self,i)
-        #    keys.extend([(i,key) for key in main.keys()])
+
         for key in self.havet.keys():
-            keys.append((key,self.no,self.yes))
+            keys.append((key,self.yes,self.no,self.yes))
             self.where[key]='havet'
         for key in self.havev.keys():
-            keys.append((key,self.yes,self.no))
+            keys.append((key,self.yes,self.yes,self.no))
             self.where[key]='havev'
         for key in self.missingboth.keys():
-            keys.append((key,self.no,self.no))
+            keys.append((key,self.yes,self.no,self.no))
             self.where[key]='missingboth'
+        for key in self.empty.keys():
+            keys.append((key,self.no,self.no,self.no))
+            self.where[key]='empty'
+
 
         keys.sort(key=lambda x:x[0])
+
         self.keys=keys
+
+
         print(f'{keys=}')
         for k in keys:
-            self.tree.insert('','end',values=k)
+            _id=k[0]
+            self.tree.insert('','end',iid=_id,values=k)
+            #for fname in getattr(self,self.where[_id])['filenames']:
+            #    self.tree.insert(_id,'end',iid=fname,values=fname)
+
+        for k in keys:
+            self.tree.item(k[0],tags=self.tags[self.where[k[0]]])
+
+        #print(f'{self.tags=} f{self.where=} f{keys=}')
+
+
+
     def init(self):
         t=self.tree
-        self.cols=[0,1,2]
+        self.cols=[0,1,2,3]
         t.config(columns=self.cols)
         t.column('#0',width=0,stretch=0)
-        for i,c in zip('Classes Has*Validation Has*Training'.split(),self.cols):
+        for i,c in zip('Classes Non*Empty Has*Validation Has*Training'.split(),self.cols):
             i = i.replace('*',' ')
             t.heading(c,anchor='center',text=i)
             t.column(c,minwidth=10,width=70,anchor='center')
             print(c)
         #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
+
+        #configure tags
+        t.tag_configure('nonempty',background='green')
+        t.tag_configure('empty',background='red')
+
+        self.tags['havet']='nonempty'
+        self.tags['havev']='nonempty'
+        self.tags['missingboth']='nonempty'
+        self.tags['empty']='empty'
 def _center(w):
     w.geometry('+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)))
 
