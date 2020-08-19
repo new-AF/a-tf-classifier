@@ -27,6 +27,62 @@ import os
 import time
 
 #supersedes _pack and _geomTranslator
+class Gridder:
+    def __init__(self,parent,target,key,*tupl,**kw):
+
+
+        self.parent=parent
+        self.keys=dict()
+        self.args = dict()
+        self.rargs=dict()
+        self.crgs=dict()
+
+        self.add(target,key,tup,kw,kw.pop('show',0))
+
+    def add(self,target,key,tup=None,kw=dict(),show=0):
+        if key not in self.args:
+            self.keys[key]=target
+            self.args[key]=dict(on=0)
+        self.update(key,tup,kw,show)
+    def update(self,key,tup=None,kw=dict(),show=0):
+        for x in tup:
+            if type(x) == str:
+                for i in x.split(';'):
+                    a,b = [str.strip(j) for j in i.split('=')]
+                    self.args[key][a]=b
+
+        for k,v in kw.items():
+            if k in ['rweight','runiform']:
+                self.rargs[key]=[k[1:]]=v
+            elif k in ['cweight','cuniform']:
+                self.crgs[key][k[1:]]=v
+        if show:
+            self.rshow(key)
+            self.cshow(key)
+            self.show(key)
+    def rshow(self,key):
+        self.parent.grid_rowconfigure(self.keys[key],self.rargs[key])
+    def cshow(self,key):
+        self.parent.grid_columnconfigure(self.keys[key],self.rargs[key])
+    def forget(self,key):
+        if not self.args[key]['on']:
+            return
+        w=self.keys[key]
+        w.grid_forget()
+        self.args[key]['on']=0
+        return w
+    def hide(self,key):
+        if not self.args[key]['on']:
+            return
+        w=self.keys[key]
+        w.grid_remove()
+        self.args[key]['on']=0
+        return w
+    def show(self,key):
+        w=self.keys[key]
+        w.grid_configure(self.args[key])
+        self.args[key]['on']=1
+        return w
 class Packer:
     def __init__(self,target,*tupl,**kw):
         self.args = dict()
@@ -145,20 +201,28 @@ class Gallery:
         self.on._bind(self.on.c,configure_=self.startmoved)
         self.varProg = 0
 
-    def novar(self,name):
-        return name not in vars(self.on)
-
     def startmoved(self,e):
-        if self.novar('W') or self.imageCount == 0:
+        if 'W' not in vars(self.on) or self.imageCount == 0:
             return
         #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
         if self.on.W > self.lastWidth and (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
             return
-        self.Tmove = threading.Thread(target=self.moved,args=(e,))
-        #print(f'started thread {self.Tmove}')
-        self.Tmove.start()
+        self.Tmovestop=0
+        if 'T1movelock' not in vars(self):
+            pass
+            #self.Tmovelock = threading.Lock()
+            #self.Tmove = threading.Thread(target=self.moved,args=(e,))
+            #print(f'started thread {self.Tmove}')
+            #self.Tmove.start()
+
+        else:
+            #print(f'*************************** exists maiking {self.Tmovestop = }')
+            self.Tmovestop=1
+        #print(f'Started {self.Tmove.getName()}')
+        self.moved(e)
 
     def moved(self,e):
+        #self.Tmovelock.acquire()
         prog0.config(value=0)
 
         #put('moved->grid')
@@ -173,10 +237,18 @@ class Gallery:
         for _y in Y:
             #
             for _x,icount  in zip(X,count[startI:startI+LenX]):
-                print(f'no of alive threads {threading.active_count():>10}')
-                if threading.currentThread() != self.Tmove:
+                #print(f'no of alive threads {threading.active_count():>10}')
+                print(f'{self.Tmovestop = } Active thread {threading.currentThread().getName()}')
+                if self.Tmovestop == 7:
                     print('stopped')
+
+                    prog0.config(value=0)
+                    self.Tmovelock.release()
+                    self.Tmove = threading.Thread(target=self.moved,args=(e,))
+                    self.Tmovestop=0
+                    self.Tmove.start()
                     return
+                #time.sleep(1)
                 prog0.step()
                 tag='i%d'%icount
 
@@ -213,7 +285,7 @@ class Gallery:
         print('Parent',threading.currentThread())
         threading.Thread(target=self.loadFromDir_,args=(path,)).start()
     def loadFromDir_(self,path):
-        print('loadFromDir ->',path)
+        #print('loadFromDir ->',path)
         fileNames = os.listdir(path)
         filePaths = list(map(lambda i, path = path: os.path.join(path,i), fileNames ))
 
@@ -238,7 +310,7 @@ class Gallery:
                 self.imageTk[icount] = PIL_Image_tk.PhotoImage( image = self.imageObject[icount] )
                 self.on.c.create_image(_x, _y, anchor ='nw', image = self.imageTk[icount],tag='i%d'%icount)
                 prog0.step()
-                print(threading.currentThread())
+                #print(threading.currentThread())
                 #self.on.c.create_text(_x, _y, text = f'{_x,_y}')
 
             startI += LenX
@@ -272,13 +344,18 @@ class LabelAB(tk.Frame):
 
 #asses path from the dialog
 class Path:
-    def __init__(self,path):
+    def __init__(self,path=None):
         self.havet = dict()
         self.havev = dict()
-        self.missingBOTH = dict()
-    def setpath(path):
+        self.missingboth = dict()
+        if path:
+            self.probe(path)
+    def propbe(self,path):
         _classes = os.listdir(path)
-        _class_info = {_class : {'path' : _path} for _class,_path in zip(_classes,[os.path.join(path,i) for i in _classes])}
+        _classes = [i for i in _classes if os.path.isdir( os.path.join(path,i) )]
+        print(f'{_classes =}')
+        print()
+        _class_info = {_class : {'path' : _path} for _class,_path in zip(_classes,[os.path.join(path,i) for i in _classes ])}
         todel=[]
         def markandcopy(item,to,key):
             if key not in getattr(self):
@@ -294,8 +371,8 @@ class Path:
 
         for k in todel:
             del _class_info[k]
-        self.missingBOTH=_class_info
-
+        self.missingboth=_class_info
+        #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
 def _center(w):
     w.geometry('+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)))
 
@@ -333,8 +410,8 @@ def _getParentDir():
     #twoFrame['text'] = " ".join (str.split(frame01['text'])[:3] + ['"{}"'.format(b)])
 
     fullA, fullB = [os.path.join(path, i) for i in [a , b]]
-    gfor01.loadFromDir(fullB)
-
+    gfor01.loadFromDir(fullA)
+    Gpath.setpath(path)
 
 
 # root window
@@ -401,7 +478,7 @@ scrollfor02 = ScrollableCanvas(frane02); frane02.pack(expand = 1, fill = BOTH)
 
 #_makeABanner(frame01, 'Training Data')
 main.title('A TF Classifier')
-
-main.wm_attributes('-top',1)
+Gpath=Path()
+#main.wm_attributes('-top',1)
 _center(main)
 main.mainloop()
