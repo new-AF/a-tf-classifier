@@ -381,35 +381,74 @@ rootMenu.add_cascade(menu = helpMenu, label = 'Help')
 main['menu']=rootMenu
 
 
+# Labelframe text padding
+def _textcenter(i,by=20):
+    l=len(i)
+    d= math.ceil(l/by)*l
+    return '{0:^{1}}'.format(i,d)
 
 # size grip
-(grip := ttk.Sizegrip(main)).pack(expand = 0 , fill = X)
+(grip := ttk.Sizegrip(main)).pack(side = BOTTOM, expand = 0 , fill = X)
 
 
 # main frame
 (frame0 := ttk.LabelFrame(main, text = 'Zero')).pack(expand = 1 , fill = BOTH)
 
+# main paned window
+(paned:=ttk.PanedWindow(frame0,orient='horizontal')).grid(row=0,column=0,rowspan=2,columnspan=2,sticky='nswe')
+
 ### Gridding Starts here ###
 ## Including Column and Row Configuration ##
-frame0.grid_columnconfigure(0,weight=1,uniform=1)
+frame0.grid_columnconfigure([0,1],weight=1,uniform=1)
 ###
+
+#paned->classes Frame->
+paned.add(Tree:=ttk.LabelFrame(paned,text=_textcenter('Classes')),weight=1)
+
+#Grid(paned->classes Frame->)
+Tree.grid_columnconfigure([0],weight=1,uniform=1)
+Tree.grid_rowconfigure([0],weight=1,uniform=1)
+
+# paned->classes Frame->classes treeview
+(tree:=ttk.Treeview(Tree)).grid(row=0,column=0,sticky='nswe')
+
+
+
+#paned->second paned
+paned.add(Second:=ttk.PanedWindow(paned,orient='vertical'))
+
+#paned->second paned->top frame
+Second.add(Top:=ttk.LabelFrame(Second,text='top frame'),weight=1)
+
+#Grid(paned->second paned->top frame)
+Top.grid_columnconfigure([0,1],weight=1,uniform=1)
+Top.grid_rowconfigure([2],weight=1,uniform=1)
+Top.grid_rowconfigure([0,1,3],weight=0,uniform=0)
+
+#paned->second paned->bottom frame
+Second.add(Bottom:=ttk.LabelFrame(Second,text='bottom frame'),weight=1)
+
+#Grid(paned->second paned->top frame)
+Bottom.grid_columnconfigure([0,1],weight=1,uniform=1)
+Bottom.grid_rowconfigure([0,1],weight=1,uniform=1)
+
 #entry and button for "live-debugging"
 def debug(*tup):
     exec(debugvar.get())
 
 debugvar = tk.StringVar()
 
-(debugbutton := ttk.Button(frame0,command=debug,text='Execute')).grid(row=0,column=0,columnspan=3,sticky='nswe')
-(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11')).grid(row=1,column=0,columnspan=3,sticky='nswe')
+(debugbutton := ttk.Button(Top,command=debug,text='Execute')).grid(row=0,column=0,columnspan=2,sticky='nswe')
+(entryfor0 := ttk.Entry(Top,textvariable=debugvar,font='courier 11')).grid(row=1,column=0,columnspan=2,sticky='nswe')
 
 entryfor0.bind('<Key-Return>',debug)
 
 # parent path
-(frame00 := LabelAB(frame0)).grid(row=2,column=0,columnspan=3,sticky='nswe')
+(frame00 := LabelAB(Top)).grid(row=2,column=0,columnspan=2,sticky='nswe')
 Gpath=Path()
 
 #train frame
-(frame01 := ttk.LabelFrame(frame0,text='Training Images dataset')).grid(row=3,column=0,columnspan=3,sticky='nswe')
+(frame01 := ttk.LabelFrame(Top,text=_textcenter('Training Images dataset'))).grid(row=2,column=0,columnspan=2,sticky='nswe')
 
 #train gallery
 (scrollfor01 := ScrollableCanvas(frame01)).pack(expand = 1, fill = BOTH)
@@ -417,10 +456,10 @@ gfor01 = Gallery(on=scrollfor01,progress=1)
 
 #progress bar
 prog0var = tk.IntVar()
-(prog0 := ttk.Progressbar(frame0,orient = 'horizontal',variable = prog0var, value=30)).grid(row=4,column=0,columnspan=3,sticky='nswe')
+(prog0 := ttk.Progressbar(Top,orient = 'horizontal',variable = prog0var, value=30)).grid(row=3,column=0,columnspan=2,sticky='nswe')
 
 #validation frame
-(frame02 := ttk.LabelFrame(frame0,text = 'Validation Images dataset')).grid(row=5,column=0,columnspan=3,sticky='nswe')
+(frame02 := ttk.LabelFrame(Bottom,text = _textcenter('Validation Images dataset'))).grid(row=0,column=0,columnspan=2,sticky='nswe')
 
 #validation gallery
 (scrollfor02 := ScrollableCanvas(frame02)).pack(expand = 1, fill = BOTH)
