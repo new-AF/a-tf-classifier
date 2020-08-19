@@ -28,61 +28,87 @@ import time
 
 #supersedes _pack and _geomTranslator
 class Gridder:
-    def __init__(self,parent,target,key,*tupl,**kw):
+    def __init__(self,parent,target=None,key=None,*tupl,**kw):
 
 
         self.parent=parent
-        self.keys=dict()
-        self.args = dict()
-        self.rargs=dict()
-        self.crgs=dict()
+        self.init()
+        if target and key:
+            self.add(target,key,tup,kw)
+    def init(self,key=None,**kw):
+        defaults ='keys args rargs cargs on'.split()
+        if key:
+            for k,v in kw.items():
+                if k in defaults:
+                    defaults.remove(k)
+                    getattr(self,k)[key]=v
+            for i in defaults:
+                getattr(self,i)[key]=dict()
+        else:
+            for i in defaults:
+                setattr(self,i,dict())
 
-        self.add(target,key,tup,kw,kw.pop('show',0))
+    def add(self,target,key,*tup,**kw):
 
-    def add(self,target,key,tup=None,kw=dict(),show=0):
         if key not in self.args:
-            self.keys[key]=target
-            self.args[key]=dict(on=0)
-        self.update(key,tup,kw,show)
-    def update(self,key,tup=None,kw=dict(),show=0):
+            self.init(key,on=0,keys=target)
+        self.update(key,tup,kw)
+
+    def update(self,key,tup=None,kw=dict()):
+        for k,v in dict(kw).items():
+            if k in ['col','colspan']:
+                del kw[k]
+                kw[k.replace('col','column')]=v
         for x in tup:
             if type(x) == str:
-                for i in x.split(';'):
+                for i in x.split(';'): #for sticky=...
                     a,b = [str.strip(j) for j in i.split('=')]
                     self.args[key][a]=b
-
+        print(tup,kw)
         for k,v in kw.items():
             if k in ['rweight','runiform']:
-                self.rargs[key]=[k[1:]]=v
+                print('KV {}=={}'.format(k,v))
+                self.rargs[key][k[1:]]=v
+                print(f'AfterAfterForKey {key} {self.keys[key]} {self.rargs[key]}')
             elif k in ['cweight','cuniform']:
-                self.crgs[key][k[1:]]=v
-        if show:
-            self.rshow(key)
-            self.cshow(key)
-            self.show(key)
+                self.cargs[key][k[1:]]=v
+            else:
+                self.args[key][k]=v
+
     def rshow(self,key):
-        self.parent.grid_rowconfigure(self.keys[key],self.rargs[key])
+        if v:=self.rargs[key]:
+            print(f'wwwwww ={self.parent.grid_slaves()} = {key}= {self.keys[key]} {self.keys[key].winfo_parent()}')
+            self.parent.grid_rowconfigure(self.keys[key],v)
     def cshow(self,key):
-        self.parent.grid_columnconfigure(self.keys[key],self.rargs[key])
+        if v:=self.cargs[key]:
+            self.parent.grid_columnconfigure(self.keys[key],v)
     def forget(self,key):
-        if not self.args[key]['on']:
+        if not self.on[key]:
             return
         w=self.keys[key]
         w.grid_forget()
-        self.args[key]['on']=0
+        self.on[key]=0
         return w
     def hide(self,key):
-        if not self.args[key]['on']:
+        if not self.on[key]:
             return
         w=self.keys[key]
         w.grid_remove()
-        self.args[key]['on']=0
+        self.on[key]=0
         return w
     def show(self,key):
         w=self.keys[key]
-        w.grid_configure(self.args[key])
-        self.args[key]['on']=1
+        print(f'{w=}')
+        w.grid(self.args[key],in_=self.parent)
+        self.on[key]=1
         return w
+    def showall(self):
+        print(f'{self.keys = }')
+        for key in self.keys.keys():
+            self.show(key)
+            self.rshow(key)
+            self.cshow(key)
+
 class Packer:
     def __init__(self,target,*tupl,**kw):
         self.args = dict()
@@ -437,34 +463,47 @@ rootMenu.add_cascade(menu = fileMenu, label = 'File')
 rootMenu.add_cascade(menu = helpMenu, label = 'Help')
 main['menu']=rootMenu
 
+
+
 # size grip
-grip = ttk.Sizegrip(main)
-grip.pack(side = TOP , fill = X)
+grip = ttk.Sizegrip(main) ; grip.pack(expand = 0 , fill = X)
 
+# main frame
+frame0 = ttk.LabelFrame(main, text = 'Zero')
+frame0.pack(expand = 1 , fill = BOTH)
 
-# root window 'body' frame
-frame0 = ttk.LabelFrame(main, text = 'Zero'); frame0.pack(expand = 1 , fill = BOTH)
-# pack it to fully occupy the root wind
+#main gridder
+G0 = Gridder(frame0)
 
+#pack it to fully occupy the root wind
 #what's equivalent to Tcl/Tk's console show
 debugvar = tk.StringVar()
-entryfor0 = ttk.Entry(frame0,textvariable=debugvar,font='courier 11') ; entryfor0.pack(expand = 1 , fill = X)
+entryfor0 = ttk.Entry(frame0,textvariable=debugvar,font='courier 11')
+G0.add(entryfor0,1,'sticky=we',row=0,column=0,columnspan=3,rowspan=1,cweight=1)
 def debug(*tup):
     exec(debugvar.get())
-debugbutton=ttk.Button(frame0,command=debug,text='Execute'); debugbutton.pack(expand = 1 , fill = X)
+
+debugbutton=ttk.Button(frame0,command=debug,text='Execute')
+G0.add(debugbutton,2,'sticky=we',row=1,column=0,colspan=3,rweight=0,cweight=1,runiform=0)
+
 entryfor0.bind('<Key-Return>',debug)
 # show parent path
-frame00 = LabelAB(frame0); frame00.pack(side = TOP , fill = X)
+frame00 = LabelAB(frame0)
+
+G0.add(frame00,3,'sticky=nswe',row=2,column=0,colspan=3,rowspan=4,rweight=1,cweight=1)
 
 
 # train data gallery
-frame01 = ttk.LabelFrame(frame0,text='Training Images dataset') ; frame01.pack(expand = 1 , fill = BOTH)
+frame01 = ttk.LabelFrame(frame0,text='Training Images dataset')
+G0.add(frame01,4,'sticky=nswe',row=3,column=0,columnspan=3,rowspan=2,rweight=1,cweight=1,runiform=1)
+
 scrollfor01 = ScrollableCanvas(frame01); scrollfor01.pack(expand = 1, fill = BOTH)
 #oneProgressFrame = tk.Frame(frame01,bg='red',bd=10)
 gfor01 = Gallery(on=scrollfor01,progress=1)
 
 varprog0 = tk.IntVar()
-prog0=ttk.Progressbar(frame0,orient = 'horizontal',variable = varprog0, value=30); prog0.pack(expand = 1 , fill = X)
+prog0=ttk.Progressbar(frame0,orient = 'horizontal',variable = varprog0, value=30)
+#prog0.pack(expand = 1 , fill = X)
 #_pack('oneProgress -> side = top ; expand = 1 ; fill = x')
 #_pack('oneProgressFrame -> side = top ; expand = 1 ; fill = x')
 #_pack('frame01 -> expand = 1 ; fill = BOTH')
@@ -472,9 +511,13 @@ prog0=ttk.Progressbar(frame0,orient = 'horizontal',variable = varprog0, value=30
 
 
 # validation gallery
-frane02 = ttk.LabelFrame(frame0,text = 'Validation Images dataset') ; frane02.pack(expand = 1, fill = BOTH)
-scrollfor02 = ScrollableCanvas(frane02); frane02.pack(expand = 1, fill = BOTH)
+frame02 = ttk.LabelFrame(frame0,text = 'Validation Images dataset')
+G0.add(frame02,5,'sticky=nswe',row=4,column=0,columnspan=3,rowspan=2,rweight=1,cweight=1,runiform=1)
 
+
+
+scrollfor02 = ScrollableCanvas(frame02) ; scrollfor02.pack(expand = 1, fill = BOTH)
+G0.showall()
 
 #_makeABanner(frame01, 'Training Data')
 main.title('A TF Classifier')
