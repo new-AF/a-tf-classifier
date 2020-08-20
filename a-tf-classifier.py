@@ -295,157 +295,75 @@ class Path:
         self.no='\u274c'
 
         self.tree=control
+        self.all=dict()
+        self.init()
 
-        self.havet = dict()
-        self.havev = dict()
-        self.missingboth = dict()
-        self.empty=dict()
-
-        self.where=dict()
-        self.tags=dict()
         if path:
             self.setpath(path)
+
     def setpath(self,path):
-        _fnames = os.listdir(path)
-        _files = [i for i in _fnames if os.path.isdir( os.path.join(path,i) )]
-        #print(f'{_files =}')
-        #print()
-        _class_info = {_class : {'path' : _path} for _class,_path in zip(_files,[os.path.join(path,i) for i in _files ])}
+        _l=os.walk(path)
+        _p, _d, _f = next(_l)
+        _lam=lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff')
 
-        ##
-        experiment = 0
-        if experiment:
-            _names = os.listdir(path)
-            _namepaths = list(map(lambda x: os.path.join(path,x),_names))
-            _zip = list(filter(lambda x: os.path.isdir(x[1]), zip(_names,_namepaths)  ))
+        _dict=dict()
+        for d in _d:
+            _p2,_d2,_f2=next(os.walk(os.path.join(_p,d)))
+            _dict[d]={'_p':_p2,'_f':_f2,'_v':'','_v_f':[],'_t':'','_t_f':[],'value':[self.no,self.no,self.no]}
 
-            _d1 = {n : {
-                    'path':p,
-                    'all':os.listdir(p),
-                    'v_listing':None,
-                    't_listing':None,
-                    'v':None,
-                    't':None,
-                    'all_len':None,
-                    'v_len':None,
-                    't_len':None,
-                    'tag':None,
-                    'values':None
-                    } for n,p in _zip}
+            if (tmpp:=len(_f2)):
+                tmp = _dict[d]['value']
+                tmp[0] = tmpp
+                _dict[d]['value'] = tmp
 
-            def hasValidation(n,dirname):
-                _d1[n]['v'] = dirname
-                #print('hasVVV')
-                #print ('->>>',_d1[n])
-                return 1
+            _v_n=(list(filter(lambda x: x.lower() == 'validation',_d2))[0:1]) #incase of different spelling variations
+            _t_n=(list(filter(lambda x: x.lower() == 'training',_d2))[0:1])
+            if _v_n:
+                _v=os.path.join(_p2,_v_n)
+                _dict[d]['_v']= _v
+                _, _, _v_f = next(os.walk(_v))
+                _v_f=filter(_lam,_v_f)
+                _dict[d]['_v_f'] = _v_f
+                tmp = _dict[d]['value']
+                tmp[1]=len(_v_f)
+                _dict[d]['value'] = tmp
 
-            def hasTraining(n,dirname):
-                #print('hasTTT')
-                _d1[n]['t'] = dirname
-                print ('->>>',_d1[n])
-                return 1
-            #print(f'{_d1 =}')
-            for n,_d in _d1.items():
-                p = _d['path']
-                if [ i for  i in _d['all'] if i.lower() == 'validation' and os.path.isdir(os.path.join(p,i) ) and hasValidation(n,i)]: #unix shenanigs if multiple variations of 'validation' exist, last dir (set via hasValidation) will be use
-                    tmp=list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(os.path.join(p,_d1[n]['v'])) ) )
-                    _d[n]['v_listing']=tmp
-                    _d[n]['v_len']=len(tmp)
-                if [ i for i in _d['all'] if i.lower() == 'training' and os.path.isdir( os.path.join(p,i) ) and hasTraining(n,i) ]:
-                    tmp=list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(os.path.join(p,_d1[n]['t'])) ) )
-                    _d[n]["t_listing"]=tmp
-                    _d[n]['t_len']=len(tmp)
+            if _t_n:
+                _t=os.path.join(_p2,_t_n)
+                _dict[d]['_t']= _t
+                _,_, _t_f = next(os.walk(_t_f))
+                _t_f=filter(_lam,_t_f)
+                _dict[d]['_t_f'] = _t_f
+                tmp= _dict[d]['value']
+                tmp[2] = len(_t_f)
+                _dict[d]['value'] = tmp
 
-                if _d[n]['t'] and _d[n]['t']:
-                    _d[n]['all']=[]
-        #for k,v in _d1.items():
-        #    print(f'{k=} {v=}\\n\n')
-        #print(f'{_dnames =} {_dpaths =}')
-        ##
-
-        for k in dict(_class_info):
-            _path=_class_info[k]['path']
-            _class_info[k]['filenames']= list( filter(lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff'), os.listdir(_path) ) )
-            _class_info[k]['nonempty'] = ( tmp:= len(_class_info[k]['filenames']) )
-            if not tmp:
-                self.empty[k] = _class_info[k]
-                del _class_info[k]
-        todel=[]
-
-        def markandcopy(item,to,key):
-            if key not in getattr(self):
-                getattr(self,key)[key]=dict(path=_class_info['path'])
-            #key -> _class/folder that contains the  folders named "training" or "validation"
-            getattr(self,to)[key]=item
-            todel.append(key)
-            return None
-        for _class, _dict in _class_info.items():
-            _class_listdir = os.listdir(_dict['path'])
-            t = [markandcopy(i,to='havet') for i in _class_listdir if i.lower() == 'training' and os.path.isdir( os.path.join(_dict['path'],i) ) ]
-            v = [markandcopy(i,to='havev') for i in _class_listdir if i.lower() == 'validation' and os.path.isdir( os.path.join(_dict['path'],i) )]
-
-        for k in todel:
-            del _class_info[k]
-        self.missingboth=_class_info
+        self.all = _dict
+        #print(f'{self.all =}')
         self.updatetree()
+
     def updatetree(self):
-        if not self.tree.get_children():
-            self.init()
-        keys=[]
-
-        for key in self.havet.keys():
-            keys.append((key,self.yes,self.no,self.yes))
-            self.where[key]='havet'
-        for key in self.havev.keys():
-            keys.append((key,self.yes,self.yes,self.no))
-            self.where[key]='havev'
-        for key in self.missingboth.keys():
-            keys.append((key,self.yes,self.no,self.no))
-            self.where[key]='missingboth'
-        for key in self.empty.keys():
-            keys.append((key,self.no,self.no,self.no))
-            self.where[key]='empty'
-
-
-        keys.sort(key=lambda x:x[0])
-
-        self.keys=keys
-
-
-        print(f'{keys=}')
-        for k in keys:
-            _id=k[0]
-            self.tree.insert('','end',iid=_id,values=k)
-            #for fname in getattr(self,self.where[_id])['filenames']:
-            #    self.tree.insert(_id,'end',iid=fname,values=fname)
+        keys=sorted(self.all)
 
         for k in keys:
-            self.tree.item(k[0],tags=self.tags[self.where[k[0]]])
-
-        #print(f'{self.tags=} f{self.where=} f{keys=}')
-
-
+            v = self.all[k]
+            self.tree.insert('','end',iid=k, values = [k]+v['value'])
 
     def init(self):
-        t=self.tree
         self.cols=[0,1,2,3]
-        t.config(columns=self.cols)
-        t.column('#0',width=0,stretch=0)
-        for i,c in zip('Classes Non*Empty Has*Validation Has*Training'.split(),self.cols):
+        self.tree.config(columns=self.cols)
+        self.tree.column('#0',width=20,stretch=0)
+        for i,c in zip('Classes Has*NonCategorized*Images Has*Validation Has*Training'.split(),self.cols):
             i = i.replace('*',' ')
-            t.heading(c,anchor='center',text=i)
-            t.column(c,minwidth=10,width=70,anchor='center')
+            self.tree.heading(c,anchor='center',text=i)
+            self.tree.column(c,minwidth=10,width=70,anchor='center')
             print(c)
         #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
 
         #configure tags
-        t.tag_configure('nonempty',background='green')
-        t.tag_configure('empty',background='red')
+        self.tree.tag_configure('nonempty',background='green')
+        self.tree.tag_configure('empty',background='red')
 
-        self.tags['havet']='nonempty'
-        self.tags['havev']='nonempty'
-        self.tags['missingboth']='nonempty'
-        self.tags['empty']='empty'
 def _center(w):
     w.geometry('+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)))
 
