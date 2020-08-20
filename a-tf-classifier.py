@@ -309,7 +309,7 @@ class Path:
         _dict=dict()
         for d in _d:
             _p2,_d2,_f2=next(os.walk(os.path.join(_p,d)))
-            _dict[d]={'_p':_p2,'_f':_f2,'_v':'','_v_f':[],'_t':'','_t_f':[],'value':[self.no,self.no,self.no]}
+            _dict[d]={'_p':_p2,'_f':_f2,'_v':'','_v_f':[],'_t':'','_t_f':[],'value':[self.no,self.no,self.no]} #values count (4)
 
             if (tmpp:=len(_f2)):
                 tmp = _dict[d]['value']
@@ -348,16 +348,29 @@ class Path:
         for k in keys:
             v = self.all[k]
             self.tree.insert('','end',iid=k, values = [k]+v['value'])
+            for category,title in zip('_f _v _t'.split(),['{Uncategorized Images}','{Validation Images}','{Training Images}']):
+                lst = v[category]
+                templ=['']
+                if lst:
+                    id1 = '{}_{}'.format(k,category)
+                    self.tree.insert(k,0,iid= id1 ,values=title)
+                    for img in lst:
+                        id2 = '{}_{}'.format(id1,img)
+                        self.tree.insert(id1,'end',iid=id2,values = templ+[img])
+                templ.append('')
 
     def init(self):
         self.cols=[0,1,2,3]
+        self.templ=['']*len(self.cols)
         self.tree.config(columns=self.cols)
-        self.tree.column('#0',width=20,stretch=0)
-        for i,c in zip('Classes Has*NonCategorized*Images Has*Validation Has*Training'.split(),self.cols):
-            i = i.replace('*',' ')
+        self.tree.column('#0',width=40,stretch=0)
+        for i,c in zip('Classes-Has Uncategorized Images-Has Validation-Has Training'.split('-'),self.cols):
             self.tree.heading(c,anchor='center',text=i)
             self.tree.column(c,minwidth=10,width=70,anchor='center')
             print(c)
+        #self.tree.column(1,anchor='w')
+        self.tree.column(0,anchor='w')
+        self.tree.heading(0,anchor='w')
         #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
 
         #configure tags
