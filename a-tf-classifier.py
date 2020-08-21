@@ -16,7 +16,7 @@ from PIL import Image as PIL_Image
 from PIL import ImageTk as PIL_Image_tk
 
 put = print
-for i in 'x bottom left right top y both'.split():
+for i in 'x bottom left right top y both none'.split():
     globals()[i.upper()]=i
 
 BLUE,RED,YELLOW,GREEN = 'blue red yellow green'.split()
@@ -60,12 +60,13 @@ class ScrollableCanvas(tk.Frame):
     def __init__(self,master, **kwargs):
 
         super().__init__(master, *kwargs)
+        #tk.Frame.__init__(self,master,kwargs)
         self.parent=master
         self.attr=dict()
 
-        self.SBV = Packer(ttk.Scrollbar(master,orient = 'vertical'),'side = right ; fill = y',show=1)
-        self.SBH = Packer(ttk.Scrollbar(master,orient = 'horizontal'),'side = bottom ; fill = x',show=1)
-        self.C = Packer(tk.Canvas(master),'side = left ; expand = 1 ; fill = both',show=1)
+        self.SBV = Packer(ttk.Scrollbar(self,orient = 'vertical'),'side = right ; fill = y',show=1)
+        self.SBH = Packer(ttk.Scrollbar(self,orient = 'horizontal'),'side = bottom ; fill = x',show=1)
+        self.C = Packer(tk.Canvas(self),'side = left ; expand = 1 ; fill = both',show=1)
 
         self.sbV=self.SBV.widget
         self.sbH=self.SBH.widget
@@ -120,37 +121,38 @@ class Gallery:
 
     def __init__(self,**kw):
 
-        self.on = kw.pop('on',False)
+        self.on = kw.pop('on',0)
 
-        if  self.on == False:
+        if  not self.on:
             raise('Missing on= ... option')
             return
         if 'c' not in vars(self.on):
-            raise('Missing "self.c" / "c" instance variable in "{}"'.format(self.on))
+            raise(f'Missing "self.c" / "c" instance variable in "{self.on}"')
             return
-        #if 'progress' in kw and kw.pop('progress',0):
-        #    self.pval=0
-        #    self.Progress=Packer(ttk.Progressbar(self.on.parent.winfo_parent(),orient = 'horizontal',variable = self.pval, value=30), 'side = top;  fill = x')
-        #    self.progress=self.Progress.show()
 
 
         self.thumbW, self.thumbH = (50, 50)
-        self.imageCount , self.rowCount , self.colCount = 0 , 0 , 0
-        self.imageObject , self.imageThumb , self.imageTk = dict() , dict() , dict()
-        self.lastWidth , self.lastHeight , self.padX , self.padY = 1, 1, 20, 20
-        self.counttofname=dict()
-        self.icountrange=[]
-        # _ means add=1
-        self.on._bind(self.on.c,configure_=self.startmoved)
+        self.lastwidth , self.lastheight , self.padx , self.pady = 1, 1, 20, 20
+
+        self.count=0
+        self.imgnames = dict()
+        self.objpil=dict()
+        self.objthumb=dict()
+        self.objimgtk=dict()
+        self.idpath=dict()
+        self.idname=dict()
+
+        self.on._bind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
         self.varProg = 0
 
-    def startmoved(self,e):
-        if 'W' not in vars(self.on) or self.imageCount == 0:
+    def Threadmoving(self,e):
+        if 'W' not in vars(self.on) or self.count == 0:
             return
         #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
-        if self.on.W > self.lastWidth and (self.on.W - self.lastWidth) < (self.thumbW + self.padX):
+        if self.on.W > self.lastwidth and (self.on.W - self.lastwidth) < (self.thumbW + self.padx):
             return
         self.Tmovestop=0
+        self.moving(e)
         if 'T1movelock' not in vars(self):
             pass
             #self.Tmovelock = threading.Lock()
@@ -162,9 +164,9 @@ class Gallery:
             #print(f'*************************** exists maiking {self.Tmovestop = }')
             self.Tmovestop=1
         #print(f'Started {self.Tmove.getName()}')
-        self.moved(e)
+        self.moving(e)
 
-    def moved(self,e):
+    def moved0(self,e):
         #self.Tmovelock.acquire()
         prog0.config(value=0)
 
@@ -207,58 +209,71 @@ class Gallery:
         self.icountrange=count
         self.on.updatesregion()
         #print(f'Thread {threading.currentThread()} Finished')
-    def getGrid(self,_len):
-        #put('->grid')
-        x = list(range(0, self.on.W, self.thumbW + self.padX ))
-        lenX = len(x)
 
-        if len(x) == 0:
-            x = 1
-            print('grid-> len(x) == 0; Automatically set to 1')
-        #put(f'ROWs {(_len/lenX)}')
-        y = list(range(0, (int(math.ceil(_len/lenX)))*(self.thumbH + self.padY),self.thumbH + self.padY))
-        lenY = len(y)
-        count = list(range(_len))
-        #put(f'total = {_len} ; {lenX} x {lenY} ; ')
-        #put(f'X---{x}----Y----{y}')
-        return [x,y,lenX,lenY,count]
-    def loadFromFilename(self,fname):
-        pass
+    def moving(self,e):
+        prog0.config(value=0)
+
+        for y,rest in self.getcoords():
+            for x,c in rest:
+                self.on.c.moveto('i%d'%c,x, y)
+                #print(f'{c=} {y=} {x=}')
+        self.lastwidth=self.on.W
+        self.on.updatesregion()
+
+    def getcoords(self,use_names=0):
+        reqx = self.thumbW+self.padx
+        reqy = self.thumbH+self.pady
+
+        xcount = math.floor(self.on.W/reqx)
+        if not xcount:
+            xcount=1
+        ycount = math.ceil(self.count/xcount)
+
+        #range1=[i*reqx for i in xcount]
+        range1=[i*reqx for i in range(xcount)]
+        range2=range(self.count)
+
+        count = 0
+        start=0
+        if use_names:
+            while count < ycount:
+                yield((count*reqy),zip( range1,list(range2[start:start+xcount]),list(self.imgnames[start:start+xcount]) ))
+                start+= xcount
+                count+=1
+        else:
+            while count < ycount:
+                yield( count*reqy, zip(range1,list(range2[start:start+xcount])) )
+                start+= xcount
+                count += 1
+
+
+    def ThreadloadFromDir(self,path):
+        print('loadFromDir, Parent Thread',threading.currentThread())
+        threading.Thread(target=self.loadFromDir,args=(path,)).start()
+
+
+
     def loadFromDir(self,path):
-        print('Parent',threading.currentThread())
-        threading.Thread(target=self.loadFromDir_,args=(path,)).start()
-    def loadFromDir_(self,path):
-        #print('loadFromDir ->',path)
-        fileNames = os.listdir(path)
-        filePaths = list(map(lambda i, path = path: os.path.join(path,i), fileNames ))
+        self.count=len(names:=os.listdir(path))
+        self.imgnames=names
+        for y,rest in self.getcoords(use_names=1):
+            for x,c,name in rest:
+                p=os.path.join(path,name)
+                self.idpath[c]=p
+                self.idname[c]=name
+                self.objpil[c]=(tmp:=PIL_Image.open(p))
+                self.objthumb[c]=tmp.thumbnail((self.thumbW,self.thumbH))
+                self.objimgtk[c]=(tmp2:=PIL_Image_tk.PhotoImage(tmp))
+                self.on.c.create_image(x, y, anchor ='nw', image = tmp2,tag='i%d'%c)
 
-        _len = len(fileNames)
+                #print(f'{c=} {y=} {x=}')
 
-        X,Y,LenX,LenY,self.icountrange = self.getGrid(_len)
-
-        #put(f'{X}----{Y}----{LenX}----{LenY}-----')
-        #put ('canFitCols->',LenX, 'math->',self.on.W / (self.thumbW+self.padX),'x ranges',X)
-        prog0.config(maximum=_len)
-        startI, colCount = 0, 0
-
-        self.lastWidth, self.lastHeight = self.on.W, self.on.H
-        for _y in Y:
-
-            for fileName, _x, filePath,icount  in zip(fileNames[startI:startI+LenX],X,filePaths[startI:startI+LenX],self.icountrange[startI:startI+LenX] ):
-
-                #print(f'fileName ---{filePath}---{_y}---{_x}---{self.imageCount}---')
-                self.counttofname[icount]=fileName
-                self.imageObject[icount] = PIL_Image.open(filePath)
-                self.imageThumb[icount] = self.imageObject[icount].thumbnail((self.thumbW,self.thumbH))
-                self.imageTk[icount] = PIL_Image_tk.PhotoImage( image = self.imageObject[icount] )
-                self.on.c.create_image(_x, _y, anchor ='nw', image = self.imageTk[icount],tag='i%d'%icount)
                 prog0.step()
-                #print(threading.currentThread())
-                #self.on.c.create_text(_x, _y, text = f'{_x,_y}')
 
-            startI += LenX
-        self.lastY = Y[-1]
-        self.imageCount = _len
+        self.lastwidth=self.on.W
+        self.lastheight=self.on.H
+
+
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
     def __init__(self,master, **kwargs):
@@ -466,7 +481,7 @@ frame0.grid_columnconfigure([0,1],weight=1,uniform=1)
 #paned->classes Frame->
 paned.add(Tree:=ttk.LabelFrame(paned,text=_textcenter('Classes')),weight=1)
 
-#Grid(paned->classes Frame->)
+#Grid
 Tree.grid_columnconfigure([0],weight=1,uniform=1)
 Tree.grid_rowconfigure([0],weight=1,uniform=1)
 
@@ -477,6 +492,24 @@ Tree.grid_rowconfigure([0],weight=1,uniform=1)
 
 #paned->second paned
 paned.add(Second:=ttk.PanedWindow(paned,orient='vertical'))
+
+#paned->second paned->all frame
+Second.add(All:=ttk.LabelFrame(Second,text='all frame'),weight=1)
+
+#Grid
+All.grid_columnconfigure([0,1],weight=1,uniform=1)
+All.grid_columnconfigure(2,weight=0,uniform=0)
+All.grid_rowconfigure([1],weight=1,uniform=1)
+All.grid_rowconfigure([0],weight=0,uniform=0)
+
+# a scroll canvas
+(allscroll:=ScrollableCanvas(All)).grid(row=1,column=1,columnspan=3)
+
+# actions menu
+allmenu=tk.Menu(main)
+
+# operations button
+(allbutton:=ttk.Menubutton(All,text='Actions')).grid(row=0,column=2,columnspan=1)
 
 #paned->second paned->top frame
 Second.add(Top:=ttk.LabelFrame(Second,text='top frame'),weight=1)
