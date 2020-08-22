@@ -9,6 +9,7 @@ import math
 
 import time
 import threading
+import copy
 
 from tkinter import filedialog
 from tkinter import messagebox
@@ -457,6 +458,34 @@ class Path:
                 getattr(self,widget).Threadload(_dict[a],cnames = c_names)
                 #getattr(self,widget).load(_dict[a],dict(cnames=c_names))
 
+class Collapse:
+    def __init__(self,geom,*tobe): # frames; to be collapsed
+
+        self.all = {i:0 for i in tobe}
+        self.geom=geom
+        self.current = None
+
+        call0 = getattr(tk,"%s"%(self.geom.capitalize()))
+        call1 = getattr(call0,"%s_info"%(self.geom))
+        self.call = getattr(call0,"%s_configure"%(self.geom))
+
+
+        self.id=dict()
+        self.config={i:call1(i) for i in self.all}
+
+    def pressed(self,widget):
+        self.all[widget] = (v:=not self.all[widget])
+
+        self.current = v if v else None
+
+        if v:
+            for k,val in self.config.items():
+                self.call(k,{'relheight':0})
+            self.call(widget,{'relheight':0.9,'rely':0.1})
+        else:
+            for k,val in self.config.items():
+                self.call(k,val)
+
 def _center(w,width=None,h=None):
     s1 = ['{}']*2
     if width:
@@ -581,8 +610,14 @@ def show(w,geom):
     elif geom == 'place':
         w.place_config(**w.PLACE_CONFIG)
 
-def ifcollapse(menu,cindex,scroll,geom):
-    call,label = [(show,'Collapse'),(hide,'Expand')][menu.entrycget(0,'label')=='Collapse']
+def ifcollapse(menu,chindex,parent,geom):
+    v=menu.entrycget(0,"value")
+    return
+    geom = getattr(tk,"%s.%s_slaves"%(geom.capitalize(),geom))
+    a = reversed(geom(parent))
+    this = a.pop(chindex)
+
+    call,label = [show,hide][menu.entrycget(0,'value')=='Collapse']
     #print(f'{call=}')
     menu.entryconfig(0,label=label)
     call(scroll,geom)
@@ -629,6 +664,8 @@ Tree.grid_rowconfigure([0],weight=1,uniform=1)
 #-----------------------------------Right Frame----------------------------------------------#
 #--------------------------------------------------------------------------------------------#
 
+
+
 # paned/right frame/
 paned.add(right:=ttk.Frame(paned),weight=1)
 
@@ -652,15 +689,23 @@ paned.add(right:=ttk.Frame(paned),weight=1)
 
 #--------------------------------------------------------------------------------------------#
 
-# /"uncategized" actions menu
+# /"uncategized", actions menu
 uncatmenu=tk.Menu(main,tearoff=0)
+trainmenu=tk.Menu(main,tearoff=0)
+validmenu=tk.Menu(main,tearoff=0)
 
-uncatmenu.add_command(label='Collapse',command=lambda : ifcollapse(uncatmenu,0,uncatscroll,'pack'))
+uncatmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(All))
+trainmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Top))
+validmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Bottom))
+
+#--------------------------------------------------------------------------------------------#
+#paned/right frame/second paned window/"uncategorized" frame/top 'toolbar'
+(uncattop := ttk.Frame(All)).pack(side=TOP , expand = 0, fill=X)
 
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/"uncategorized" frame/actions button
-(uncatbutton:=ttk.Menubutton(All,text='Actions',menu=uncatmenu)).pack(side=TOP , expand = 0, fill=X)
+(uncatbutton:=ttk.Menubutton(uncattop,text='Actions',menu=uncatmenu)).pack(side=RIGHT , expand = 0, fill=X)
 
 #--------------------------------------------------------------------------------------------#
 
@@ -686,9 +731,16 @@ guncat = Gallery(on=uncatscroll,progress=uncatprog)
 #paned/right frame/top frame
 (Top:=ttk.LabelFrame(right,text='Training Images')).place(rely=0.4 , x = 0, relwidth=1, relheight=0.3)
 
+#--------------------------------------------------------------------------------------------#
+#paned/right frame/second paned window/"train" frame/top 'toolbar'
+(traintop := ttk.Frame(Top)).pack(side=TOP , expand = 0, fill=X)
 
 #--------------------------------------------------------------------------------------------#
 
+# paned/right frame/"train" frame/actions button
+(trainbutton:=ttk.Menubutton(traintop,text='Actions',menu=trainmenu)).pack(side=RIGHT , expand = 0, fill=X)
+
+#--------------------------------------------------------------------------------------------#
 
 #paned/right frame/top frame/frame01/train ScrollableCanvas
 (scrollfor01 := ScrollableCanvas(Top)).pack(expand = 1, fill = BOTH)
@@ -716,7 +768,15 @@ g01 = Gallery(on=scrollfor01,progress=trainprog)
 (Bottom:=ttk.LabelFrame(right,text='Validation Images')).place(rely=0.7 , x = 0, relwidth=1, relheight=0.3)
 
 #--------------------------------------------------------------------------------------------#
+#paned/right frame/second paned window/"train" frame/top 'toolbar'
+(validtop := ttk.Frame(Bottom)).pack(side=TOP , expand = 0, fill=X)
 
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/"train" frame/actions button
+(validbutton:=ttk.Menubutton(validtop,text='Actions',menu=validmenu)).pack(side=RIGHT , expand = 0, fill=X)
+
+#--------------------------------------------------------------------------------------------#
 
 #paned/right frame/bottom frame/validation ScrollableCanvas
 (scrollfor02 := ScrollableCanvas(Bottom)).pack(expand = 1,side = TOP, fill = BOTH)
@@ -738,6 +798,10 @@ g02 = Gallery(on=scrollfor02,progress=validprog)
 Tpath=Path(tree=tree,gallery=[guncat,g01,g02])
 
 #--------------------------------------------------------------------------------------------#
+
+coll = Collapse('place',All,Top,Bottom)
+expandvar = {i:tk.IntVar() for i in [uncatmenu,trainmenu,validmenu]}
+[i.entryconfig(0,variable=v) for i,v in expandvar.items()]
 
 main.title('A TF Classifier')
 
