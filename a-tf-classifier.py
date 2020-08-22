@@ -130,6 +130,7 @@ class Gallery:
             raise(f'Missing "self.c" / "c" instance variable in "{self.on}"')
             return
 
+        self.progress=kw.pop('progress')
 
         self.thumbW, self.thumbH = (50, 50)
         self.lastwidth , self.lastheight , self.padx , self.pady = 1, 1, 20, 20
@@ -168,7 +169,7 @@ class Gallery:
 
     def moved0(self,e):
         #self.Tmovelock.acquire()
-        prog0.config(value=0)
+
 
         #put('moved->grid')
         X,Y,LenX,LenY,count = self.getGrid(self.imageCount)
@@ -211,12 +212,12 @@ class Gallery:
         #print(f'Thread {threading.currentThread()} Finished')
 
     def moving(self,e):
-        prog0.config(value=0)
+        #prog0.config(value=0)
 
         for y,rest in self.getcoords():
             for x,c in rest:
                 self.on.c.moveto('i%d'%c,x, y)
-                #print(f'{c=} {y=} {x=}')
+                print(f'{c=} {y=} {x=}')
         self.lastwidth=self.on.W
         self.on.updatesregion()
 
@@ -251,12 +252,13 @@ class Gallery:
 
     def Threadload(self,path,**kw):
         print('Threadload, Current Thread',threading.currentThread())
-        #threading.Thread(target=self.load,args=(path,kw)).start()
+        threading.Thread(target=self.load,args=(path,kw)).start()
 
 
     #loadNamesFromList
     def load(self,path,kw=dict()):
         #print(f'Gallet->load {path=} {kw=}')
+
         if (got:=kw.pop('names',0)):
             self.imgnames=got
             coords=self.getcoords(use_names=1)
@@ -268,7 +270,12 @@ class Gallery:
             #load from this dir
             got=os.listdir(path)
             coords=self.getcoords(use_names=1)
+
         self.count=len(got)
+        self.progress.Variable.set(0)
+        self.progress.config(max=self.count)
+        show(self.progress,'pack')
+
         #print(f'~~~ {self.count} \n')
         for y,rest in coords:
             for x,c,name in rest:
@@ -284,8 +291,9 @@ class Gallery:
 
                 #print(f'{c=} {y=} {x=}')
 
-                prog0.step()
+                self.progress.step()
 
+        hide(self.progress,'pack')
         self.lastwidth=self.on.W
         self.lastheight=self.on.H
         self.on.updatesregion()
@@ -431,8 +439,8 @@ class Path:
             c_names = _dict[b]
             #print(f'{a=} path={_dict[a]} {c_names=}')
             if c_names:
-                #self.ug.Threadload(_dict[a],cnames = c_names)
-                getattr(self,widget).load(_dict[a],dict(cnames=c_names))
+                getattr(self,widget).Threadload(_dict[a],cnames = c_names)
+                #getattr(self,widget).load(_dict[a],dict(cnames=c_names))
 
 def _center(w,width=None,h=None):
     s1 = ['{}']*2
@@ -521,7 +529,7 @@ def debug(*tup):
 debugvar = tk.StringVar()
 
 #hide windows
-def hide(w,geom):
+def hide(w,geom,**kw):
     geom=geom.lower()
     if geom == 'grid':
         if 'GRID_CONFIG' not in vars(w):
@@ -539,10 +547,11 @@ def hide(w,geom):
     elif geom == 'pack':
         if 'PACK_CONFIG' not in vars(w):
             w.PACK_CONFIG = w.pack_info()
+            w.PACK_CONFIG.update(kw)
         w.pack_forget()
     elif geom == 'place':
         if 'PLACE_CONFIG' not in vars(w):
-            w.PACK_PLACE = w.place_info()
+            w.PLACE_CONFIG = w.place_info()
         w.place_forget()
 
 #unhide
@@ -553,9 +562,9 @@ def show(w,geom):
         All.grid_rowconfigure(tmp['row'], weight = tmp['weight'], uniform = tmp['uniform'])
         w.grid()
     elif geom == 'pack':
-        w.pack_configure(w.PACK_CONFIG)
+        w.pack_configure(**w.PACK_CONFIG)
     elif geom == 'place':
-        w.place_config(w.PLACE_CONFIG)
+        w.place_config(**w.PLACE_CONFIG)
 
 def ifcollapse(menu,cindex,scroll,geom):
     call,label = [(show,'Collapse'),(hide,'Expand')][menu.entrycget(0,'label')=='Collapse']
@@ -602,6 +611,8 @@ Tree.grid_rowconfigure([0],weight=1,uniform=1)
 (tree:=ttk.Treeview(Tree)).grid(row=0,column=0,sticky='nswe')
 
 #--------------------------------------------------------------------------------------------#
+#-----------------------------------Right Frame----------------------------------------------#
+#--------------------------------------------------------------------------------------------#
 
 # paned/right frame/
 paned.add(right:=ttk.Frame(paned),weight=1)
@@ -633,56 +644,80 @@ uncatmenu.add_command(label='Collapse',command=lambda : ifcollapse(uncatmenu,0,u
 
 #--------------------------------------------------------------------------------------------#
 
-# paned/right frame/second paned window/"uncategorized" frame/actions button
+# paned/right frame/"uncategorized" frame/actions button
 (uncatbutton:=ttk.Menubutton(All,text='Actions',menu=uncatmenu)).pack(side=TOP , expand = 0, fill=X)
 
 #--------------------------------------------------------------------------------------------#
 
 
+
 #paned/right frame/second paned window/"uncategorized" frame/scroll canvas
 (uncatscroll:=ScrollableCanvas(All)).pack(side=TOP , expand = 1, fill=BOTH)
 
-guncat = Gallery(on=uncatscroll,progress=1)
 
+
+#--------------------------------------------------------------------------------------------#
+# paned/right frame/"uncategorized" frame/progress bar
+(uncatprog:=ttk.Progressbar(All,orient = 'horizontal')).pack(side=TOP , expand = 0, fill=X,before = uncatscroll)
+uncatprog.Variable = tk.IntVar() #value =55
+uncatprog.config(variable=uncatprog.Variable)
+hide(uncatprog,'pack', before = uncatscroll)
+
+#--------------------------------------------------------------------------------------------#
+guncat = Gallery(on=uncatscroll,progress=uncatprog)
 #--------------------------------------------------------------------------------------------#
 
 
-#paned/right frame/second paned window/top frame
+#paned/right frame/top frame
 (Top:=ttk.LabelFrame(right,text='Training Images')).place(rely=0.4 , x = 0, relwidth=1, relheight=0.3)
 
 
 #--------------------------------------------------------------------------------------------#
 
-#paned/right frame/second paned window/top frame/progress bar
-prog0var = tk.IntVar()
-(prog0 := ttk.Progressbar(Top,orient = 'horizontal',variable = prog0var, value=30)).pack(expand = 1,side = TOP, fill = X)
 
-#--------------------------------------------------------------------------------------------#
-
-#paned/right frame/second paned window/top frame/frame01/train ScrollableCanvas
+#paned/right frame/top frame/frame01/train ScrollableCanvas
 (scrollfor01 := ScrollableCanvas(Top)).pack(expand = 1, fill = BOTH)
-g01 = Gallery(on=scrollfor01,progress=1)
 
 #--------------------------------------------------------------------------------------------#
 
-#paned/right frame/second paned window/top frame/frame00/parent path LabelAB
+#paned/right frame/top frame/training progress bar
+
+(trainprog := ttk.Progressbar(Top,orient = 'horizontal')).pack(expand = 1,side = TOP, fill = X, before = scrollfor01)
+trainprog.Variable = tk.IntVar() #value =55
+trainprog.config(variable=trainprog.Variable)
+hide(trainprog,'pack', before = scrollfor01)
+
+#--------------------------------------------------------------------------------------------#
+g01 = Gallery(on=scrollfor01,progress=trainprog)
+#--------------------------------------------------------------------------------------------#
+
+#paned/right frame/top frame/frame00/parent path LabelAB
 (frame00 := LabelAB(Top)).pack(expand = 1,side = TOP, fill = X)
 
 
 #--------------------------------------------------------------------------------------------#
 
-#paned/right frame/second paned window/bottom frame
+#paned/right frame/bottom frame
 (Bottom:=ttk.LabelFrame(right,text='Validation Images')).place(rely=0.7 , x = 0, relwidth=1, relheight=0.3)
 
 #--------------------------------------------------------------------------------------------#
 
 
-#paned/right frame/second paned window/bottom frame/validation ScrollableCanvas
+#paned/right frame/bottom frame/validation ScrollableCanvas
 (scrollfor02 := ScrollableCanvas(Bottom)).pack(expand = 1,side = TOP, fill = BOTH)
 
-g02 = Gallery(on=scrollfor02,progress=1)
+#--------------------------------------------------------------------------------------------#
+validprogvar = tk.IntVar() #value =55
+# paned/right frame/"validation" frame/progress bar
+(validprog:=ttk.Progressbar(Bottom,orient = 'horizontal',variable = validprogvar)).pack(side=TOP , expand = 0, fill=X, before = scrollfor02)
+validprog.Variable = tk.IntVar() #value =55
+validprog.config(variable=validprog.Variable)
+hide(validprog,'pack', before = scrollfor02)
 
 #--------------------------------------------------------------------------------------------#
+g02 = Gallery(on=scrollfor02,progress=validprog)
+#--------------------------------------------------------------------------------------------#
+
 
 #chosen path assesor
 Tpath=Path(tree=tree,gallery=[guncat,g01,g02])
