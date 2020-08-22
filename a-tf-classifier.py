@@ -220,7 +220,7 @@ class Gallery:
         self.lastwidth=self.on.W
         self.on.updatesregion()
 
-    def getcoords(self,use_names=0):
+    def getcoords(self,**kw):
         reqx = self.thumbW+self.padx
         reqy = self.thumbH+self.pady
 
@@ -229,36 +229,52 @@ class Gallery:
             xcount=1
         ycount = math.ceil(self.count/xcount)
 
-        #range1=[i*reqx for i in xcount]
+        #print(f'-------- {xcount=} {ycount=}')
+
         range1=[i*reqx for i in range(xcount)]
         range2=range(self.count)
 
         count = 0
         start=0
-        if use_names:
+        if kw.pop('use_names',0):
+
             while count < ycount:
                 yield((count*reqy),zip( range1,list(range2[start:start+xcount]),list(self.imgnames[start:start+xcount]) ))
                 start+= xcount
                 count+=1
-        else:
+        elif kw.pop('use_dict',0):
             while count < ycount:
-                yield( count*reqy, zip(range1,list(range2[start:start+xcount])) )
+                yield( count*reqy, zip(range1,list(range2[start:start+xcount]),list(self.cnames.values())[start:start+xcount]) )
                 start+= xcount
                 count += 1
 
 
-    def ThreadloadFromDir(self,path):
-        print('loadFromDir, Parent Thread',threading.currentThread())
-        threading.Thread(target=self.loadFromDir,args=(path,)).start()
+    def Threadload(self,path,**kw):
+        print('Threadload, Current Thread',threading.currentThread())
+        #threading.Thread(target=self.load,args=(path,kw)).start()
 
 
+    #loadNamesFromList
+    def load(self,path,kw=dict()):
+        #print(f'Gallet->load {path=} {kw=}')
+        if (got:=kw.pop('names',0)):
+            self.imgnames=got
+            coords=self.getcoords(use_names=1)
 
-    def loadFromDir(self,path):
-        self.count=len(names:=os.listdir(path))
-        self.imgnames=names
-        for y,rest in self.getcoords(use_names=1):
+        elif (got:=kw.pop('cnames',0)):
+            self.cnames=got
+            coords=self.getcoords(use_dict=1)
+        else:
+            #load from this dir
+            got=os.listdir(path)
+            coords=self.getcoords(use_names=1)
+        self.count=len(got)
+        #print(f'~~~ {self.count} \n')
+        for y,rest in coords:
             for x,c,name in rest:
+                #print(f'{y=} {x=} {c=} {name=}')
                 p=os.path.join(path,name)
+                #print(f'{path=} {p=}')
                 self.idpath[c]=p
                 self.idname[c]=name
                 self.objpil[c]=(tmp:=PIL_Image.open(p))
@@ -272,8 +288,7 @@ class Gallery:
 
         self.lastwidth=self.on.W
         self.lastheight=self.on.H
-
-
+        self.on.updatesregion()
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
     def __init__(self,master, **kwargs):
@@ -302,78 +317,26 @@ class LabelAB(tk.Frame):
 
 #asses path from the dialog
 class Path:
-    def __init__(self,control=None,path=None):
-        if control is None:
-            raise('control=... is empty')
+    def __init__(self,tree=None,gallery=[],path=None):
+        if tree is None:
+            raise('tree=... is empty')
             return
+        if not gallery:
+            raise('gallery=... is empty')
+            return
+        #uncategorized, validation,training galleries
+        self.ug, self.vg, self.tg  = gallery
+
         self.yes='\u2714'
         self.no='\u274c'
 
-        self.tree=control
+        self.tree=tree
         self.all=dict()
         self.init()
 
         if path:
             self.setpath(path)
-
-    def setpath(self,path):
-        _l=os.walk(path)
-        _p, _d, _f = next(_l)
-        _lam=lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff')
-
-        _dict=dict()
-        for d in _d:
-            _p2,_d2,_f2=next(os.walk(os.path.join(_p,d)))
-            _dict[d]={'_p':_p2,'_f':_f2,'_v':'','_v_f':[],'_t':'','_t_f':[],'value':[self.no,self.no,self.no]} #values count (4)
-
-            if (tmpp:=len(_f2)):
-                tmp = _dict[d]['value']
-                tmp[0] = tmpp
-                _dict[d]['value'] = tmp
-
-            _v_n=(list(filter(lambda x: x.lower() == 'validation',_d2))[0:1]) #incase of different spelling variations
-            _t_n=(list(filter(lambda x: x.lower() == 'training',_d2))[0:1])
-            if _v_n:
-                _v=os.path.join(_p2,_v_n)
-                _dict[d]['_v']= _v
-                _, _, _v_f = next(os.walk(_v))
-                _v_f=filter(_lam,_v_f)
-                _dict[d]['_v_f'] = _v_f
-                tmp = _dict[d]['value']
-                tmp[1]=len(_v_f)
-                _dict[d]['value'] = tmp
-
-            if _t_n:
-                _t=os.path.join(_p2,_t_n)
-                _dict[d]['_t']= _t
-                _,_, _t_f = next(os.walk(_t_f))
-                _t_f=filter(_lam,_t_f)
-                _dict[d]['_t_f'] = _t_f
-                tmp= _dict[d]['value']
-                tmp[2] = len(_t_f)
-                _dict[d]['value'] = tmp
-
-        self.all = _dict
-        #print(f'{self.all =}')
-        self.updatetree()
-
-    def updatetree(self):
-        keys=sorted(self.all)
-
-        for k in keys:
-            v = self.all[k]
-            self.tree.insert('','end',iid=k, values = [k]+v['value'])
-            for category,title in zip('_f _v _t'.split(),['{Uncategorized Images}','{Validation Images}','{Training Images}']):
-                lst = v[category]
-                templ=['']
-                if lst:
-                    id1 = '{}_{}'.format(k,category)
-                    self.tree.insert(k,0,iid= id1 ,values=title)
-                    for img in lst:
-                        id2 = '{}_{}'.format(id1,img)
-                        self.tree.insert(id1,'end',iid=id2,values = templ+[img])
-                templ.append('')
-
+        self.tree.bind('<<TreeviewSelect>>',self.rowselected)
     def init(self):
         self.cols=[0,1,2,3]
         self.templ=['']*len(self.cols)
@@ -392,8 +355,96 @@ class Path:
         self.tree.tag_configure('nonempty',background='green')
         self.tree.tag_configure('empty',background='red')
 
-def _center(w):
-    w.geometry('+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)))
+    def setpath(self,path):
+        _l=os.walk(path)
+        _p, _d, _f = next(_l)
+        _lam=lambda x:x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tiff')
+
+        _dict=dict()
+        for d in _d:
+            _p2,_d2,_f2=next(os.walk(os.path.join(_p,d)))
+            _dict[d]={'_p':_p2,
+                    '_f_id':dict(),
+                    '_v':'',
+                    '_v_id':dict(),
+                    '_t':'',
+                    '_t_id':dict(),
+                    'value':[self.no,self.no,self.no]} #values count (4)
+
+            _dict[d]['_f_id'] = dict( zip(range(len(_f2)), _f2 ) )
+
+            if (tmpp:=len(_f2)):
+                tmp = _dict[d]['value']
+                tmp[0] = tmpp
+                _dict[d]['value'] = tmp
+
+            _v_n=(list(filter(lambda x: x.lower() == 'validation',_d2)))
+            _t_n=(list(filter(lambda x: x.lower() == 'training',_d2)))
+            if _v_n:
+                _v_n = _v_n[0] #incase of different spelling variations
+                _dict[d]['_v']= ( _v:=os.path.join(_p2,_v_n) )
+                _, _, _v_f = next(os.walk(_v))
+                _dict[d]['_v_id'] = dict( zip(range(len(_v_f)), _v_f:=list(filter(_lam,_v_f))) )
+                tmp = _dict[d]['value']
+                tmp[1]=len(_v_f)
+                _dict[d]['value'] = tmp
+
+            if _t_n:
+                _t_n = _t_n[0]
+                _dict[d]['_t']= ( _t:=os.path.join(_p2,_t_n) )
+                _,_, _t_f = next(os.walk(_t))
+                _dict[d]['_t_id'] = dict( zip(range(len(_t_f)), _v_f:=list(filter(_lam,_t_f))) )
+                tmp= _dict[d]['value']
+                tmp[2] = len(_t_f)
+                _dict[d]['value'] = tmp
+
+        self.all = _dict
+        #print(f'{self.all =}')
+        self.updatetree()
+
+    def updatetree(self):
+        keys=sorted(self.all)
+
+        for k in keys:
+            v = self.all[k]
+            templ=['']
+            self.tree.insert('','end',iid=k, values = [k]+v['value'])
+            for category,title in zip('_f_id _v_id _t_id'.split(),['{Uncategorized Images}','{Validation Images}','{Training Images}']):
+                _dict = v[category]
+
+                if _dict:
+                    id1='{%s} {%s}'%(k,category)
+                    self.tree.insert(k,'end',iid= id1 ,values=title)
+                    for c,img in _dict.items():
+                        id2 = '%s {%s}'%(id1,c)
+                        self.tree.insert(id1,'end',iid=id2,values = templ+[img])
+                templ.append('')
+        #start updating gelleries
+
+    def rowselected(self,e):
+        pass
+        row=self.tree.focus()
+        banner.config(text=row)
+        #print(f'--------{row=}')
+        _dict = self.all[row]
+        for widget,a,b in zip('ug vg tg'.split(), '_p _v _t'.split(),'_f_id _v_id _t_id'.split()):
+            c_names = _dict[b]
+            #print(f'{a=} path={_dict[a]} {c_names=}')
+            if c_names:
+                #self.ug.Threadload(_dict[a],cnames = c_names)
+                getattr(self,widget).load(_dict[a],dict(cnames=c_names))
+
+def _center(w,width=None,h=None):
+    s1 = ['{}']*2
+    if width:
+        s1[0]=str(width)
+    if h:
+        s1[1]=str(h)
+    #print(f'{s1=}')
+    s1='x'.join(s1)
+    s2='+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2))
+
+    w.geometry('%s%s'%(s1,s2))
 
 def _showToplevel(w):
     w.deiconify()
@@ -429,7 +480,7 @@ def _getParentDir():
     #twoFrame['text'] = " ".join (str.split(frame01['text'])[:3] + ['"{}"'.format(b)])
 
     fullA, fullB = [os.path.join(path, i) for i in [a , b]]
-    gfor01.loadFromDir(fullA)
+    #gfor01.loadFromDir(fullA)
     Tpath.setpath(path)
 
 
@@ -463,107 +514,185 @@ def _textcenter(i,by=20):
     d= math.ceil(l/by)*l
     return '{0:^{1}}'.format(i,d)
 
-# size grip
-(grip := ttk.Sizegrip(main)).pack(side = BOTTOM, expand = 0 , fill = X)
-
-
-# main frame
-(frame0 := ttk.LabelFrame(main, text = 'Zero')).pack(expand = 1 , fill = BOTH)
-
-# main paned window
-(paned:=ttk.PanedWindow(frame0,orient='horizontal')).grid(row=0,column=0,rowspan=2,columnspan=2,sticky='nswe')
-
-### Gridding Starts here ###
-## Including Column and Row Configuration ##
-frame0.grid_columnconfigure([0,1],weight=1,uniform=1)
-###
-
-#paned->classes Frame->
-paned.add(Tree:=ttk.LabelFrame(paned,text=_textcenter('Classes')),weight=1)
-
-#Grid
-Tree.grid_columnconfigure([0],weight=1,uniform=1)
-Tree.grid_rowconfigure([0],weight=1,uniform=1)
-
-# paned->classes Frame->classes treeview
-(tree:=ttk.Treeview(Tree)).grid(row=0,column=0,sticky='nswe')
-
-
-
-#paned->second paned
-paned.add(Second:=ttk.PanedWindow(paned,orient='vertical'))
-
-#paned->second paned->all frame
-Second.add(All:=ttk.LabelFrame(Second,text='all frame'),weight=1)
-
-#Grid
-All.grid_columnconfigure([0,1],weight=1,uniform=1)
-All.grid_columnconfigure(2,weight=0,uniform=0)
-All.grid_rowconfigure([1],weight=1,uniform=1)
-All.grid_rowconfigure([0],weight=0,uniform=0)
-
-# a scroll canvas
-(allscroll:=ScrollableCanvas(All)).grid(row=1,column=1,columnspan=3)
-
-# actions menu
-allmenu=tk.Menu(main)
-
-# operations button
-(allbutton:=ttk.Menubutton(All,text='Actions')).grid(row=0,column=2,columnspan=1)
-
-#paned->second paned->top frame
-Second.add(Top:=ttk.LabelFrame(Second,text='top frame'),weight=1)
-
-#Grid(paned->second paned->top frame)
-Top.grid_columnconfigure([0,1],weight=1,uniform=1)
-Top.grid_rowconfigure([2],weight=1,uniform=1)
-Top.grid_rowconfigure([0,1,3],weight=0,uniform=0)
-
-#paned->second paned->bottom frame
-Second.add(Bottom:=ttk.LabelFrame(Second,text='bottom frame'),weight=1)
-
-#Grid(paned->second paned->top frame)
-Bottom.grid_columnconfigure([0,1],weight=1,uniform=1)
-Bottom.grid_rowconfigure([0,1],weight=1,uniform=1)
-
 #entry and button for "live-debugging"
 def debug(*tup):
     exec(debugvar.get())
 
 debugvar = tk.StringVar()
 
-(debugbutton := ttk.Button(Top,command=debug,text='Execute')).grid(row=0,column=0,columnspan=2,sticky='nswe')
-(entryfor0 := ttk.Entry(Top,textvariable=debugvar,font='courier 11')).grid(row=1,column=0,columnspan=2,sticky='nswe')
+#hide windows
+def hide(w,geom):
+    geom=geom.lower()
+    if geom == 'grid':
+        if 'GRID_CONFIG' not in vars(w):
+            info1 = w.grid_info()
+            print(f'{w.winfo_parent()=}')
+            info2 = All.grid_rowconfigure(row := info1['row'])
+
+            w.GRID_CONFIG = dict(row = row, weight = info2['weight'], uniform = info2['uniform'])
+
+            print(f'{info1 =} {info2 =}')
+        #All.grid_rowconfigure(w.GRID_CONFIG['row'], weight = 0, uniform = 'HIDE')
+        w.grid_remove()
+
+
+    elif geom == 'pack':
+        if 'PACK_CONFIG' not in vars(w):
+            w.PACK_CONFIG = w.pack_info()
+        w.pack_forget()
+    elif geom == 'place':
+        if 'PLACE_CONFIG' not in vars(w):
+            w.PACK_PLACE = w.place_info()
+        w.place_forget()
+
+#unhide
+def show(w,geom):
+    geom=geom.lower()
+    if geom == 'grid':
+        tmp = w.GRID_CONFIG
+        All.grid_rowconfigure(tmp['row'], weight = tmp['weight'], uniform = tmp['uniform'])
+        w.grid()
+    elif geom == 'pack':
+        w.pack_configure(w.PACK_CONFIG)
+    elif geom == 'place':
+        w.place_config(w.PLACE_CONFIG)
+
+def ifcollapse(menu,cindex,scroll,geom):
+    call,label = [(show,'Collapse'),(hide,'Expand')][menu.entrycget(0,'label')=='Collapse']
+    #print(f'{call=}')
+    menu.entryconfig(0,label=label)
+    call(scroll,geom)
+
+#--------------------------------------------------------------------------------------------#
+
+# size grip
+(grip := ttk.Sizegrip(main)).pack(side = BOTTOM, expand = 0 , fill = X)
+
+#--------------------------------------------------------------------------------------------#
+
+# main frame
+(frame0 := ttk.LabelFrame(main, text = 'Zero')).pack(expand = 1 , fill = BOTH)
+
+#--------------------------------------------------------------------------------------------#
+
+#/frame0/exe entry
+#/frame0/exe button
+(debugbutton := ttk.Button(frame0,command=debug,text='Execute')).pack(expand = 0,side = TOP, fill = X)
+(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11')).pack(expand = 0,side = TOP, fill = X)
 
 entryfor0.bind('<Key-Return>',debug)
 
-# parent path
-(frame00 := LabelAB(Top)).grid(row=2,column=0,columnspan=2,sticky='nswe')
-Tpath=Path(control=tree)
+#--------------------------------------------------------------------------------------------#
 
-#train frame
-(frame01 := ttk.LabelFrame(Top,text=_textcenter('Training Images dataset'))).grid(row=2,column=0,columnspan=2,sticky='nswe')
+# main paned window
+(paned:=ttk.PanedWindow(frame0,orient='horizontal')).pack(expand = 1 , fill = BOTH)
 
-#train gallery
-(scrollfor01 := ScrollableCanvas(frame01)).pack(expand = 1, fill = BOTH)
-gfor01 = Gallery(on=scrollfor01,progress=1)
+#--------------------------------------------------------------------------------------------#
 
-#progress bar
+#paned window/classes frame/
+paned.add(Tree:=ttk.LabelFrame(paned,text=_textcenter('Classes')),weight=1)
+
+#Grid config
+Tree.grid_columnconfigure([0],weight=1,uniform=1)
+Tree.grid_rowconfigure([0],weight=1,uniform=1)
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/classes Frame/classes treeview/
+(tree:=ttk.Treeview(Tree)).grid(row=0,column=0,sticky='nswe')
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/
+paned.add(right:=ttk.Frame(paned),weight=1)
+
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/class banner frame/
+(bannerframe:=ttk.Labelframe(right,text=_textcenter('Class'))).place(x=0 , y = 0, relwidth=1, relheight=0.1)
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/class banner frame/class banner label
+(banner:=ttk.Label(bannerframe,text='',font=dict(weight='bold'))).pack(side=TOP )
+
+#--------------------------------------------------------------------------------------------#
+
+
+#paned/right frame/second paned window/"uncategorized" frame/
+(All:=ttk.LabelFrame(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.3)
+
+
+#--------------------------------------------------------------------------------------------#
+
+# /"uncategized" actions menu
+uncatmenu=tk.Menu(main,tearoff=0)
+
+uncatmenu.add_command(label='Collapse',command=lambda : ifcollapse(uncatmenu,0,uncatscroll,'pack'))
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/second paned window/"uncategorized" frame/actions button
+(uncatbutton:=ttk.Menubutton(All,text='Actions',menu=uncatmenu)).pack(side=TOP , expand = 0, fill=X)
+
+#--------------------------------------------------------------------------------------------#
+
+
+#paned/right frame/second paned window/"uncategorized" frame/scroll canvas
+(uncatscroll:=ScrollableCanvas(All)).pack(side=TOP , expand = 1, fill=BOTH)
+
+guncat = Gallery(on=uncatscroll,progress=1)
+
+#--------------------------------------------------------------------------------------------#
+
+
+#paned/right frame/second paned window/top frame
+(Top:=ttk.LabelFrame(right,text='Training Images')).place(rely=0.4 , x = 0, relwidth=1, relheight=0.3)
+
+
+#--------------------------------------------------------------------------------------------#
+
+#paned/right frame/second paned window/top frame/progress bar
 prog0var = tk.IntVar()
-(prog0 := ttk.Progressbar(Top,orient = 'horizontal',variable = prog0var, value=30)).grid(row=3,column=0,columnspan=2,sticky='nswe')
+(prog0 := ttk.Progressbar(Top,orient = 'horizontal',variable = prog0var, value=30)).pack(expand = 1,side = TOP, fill = X)
 
-#validation frame
-(frame02 := ttk.LabelFrame(Bottom,text = _textcenter('Validation Images dataset'))).grid(row=0,column=0,columnspan=2,sticky='nswe')
+#--------------------------------------------------------------------------------------------#
 
-#validation gallery
-(scrollfor02 := ScrollableCanvas(frame02)).pack(expand = 1, fill = BOTH)
+#paned/right frame/second paned window/top frame/frame01/train ScrollableCanvas
+(scrollfor01 := ScrollableCanvas(Top)).pack(expand = 1, fill = BOTH)
+g01 = Gallery(on=scrollfor01,progress=1)
 
+#--------------------------------------------------------------------------------------------#
+
+#paned/right frame/second paned window/top frame/frame00/parent path LabelAB
+(frame00 := LabelAB(Top)).pack(expand = 1,side = TOP, fill = X)
+
+
+#--------------------------------------------------------------------------------------------#
+
+#paned/right frame/second paned window/bottom frame
+(Bottom:=ttk.LabelFrame(right,text='Validation Images')).place(rely=0.7 , x = 0, relwidth=1, relheight=0.3)
+
+#--------------------------------------------------------------------------------------------#
+
+
+#paned/right frame/second paned window/bottom frame/validation ScrollableCanvas
+(scrollfor02 := ScrollableCanvas(Bottom)).pack(expand = 1,side = TOP, fill = BOTH)
+
+g02 = Gallery(on=scrollfor02,progress=1)
+
+#--------------------------------------------------------------------------------------------#
+
+#chosen path assesor
+Tpath=Path(tree=tree,gallery=[guncat,g01,g02])
+
+#--------------------------------------------------------------------------------------------#
 
 main.title('A TF Classifier')
 
-
 #main.wm_attributes('-top',1)
 
-_center(main)
+_center(main,500,500)
 
 main.mainloop()
