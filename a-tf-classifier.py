@@ -130,6 +130,7 @@ class Gallery:
             raise(f'Missing "self.c" / "c" instance variable in "{self.on}"')
             return
 
+        self.run = 0
         self.progress=kw.pop('progress')
 
         self.thumbW, self.thumbH = (50, 50)
@@ -251,13 +252,16 @@ class Gallery:
 
 
     def Threadload(self,path,**kw):
-        print('Threadload, Current Thread',threading.currentThread())
+        #print('Threadload, Current Thread',threading.currentThread())
         threading.Thread(target=self.load,args=(path,kw)).start()
 
 
     #loadNamesFromList
     def load(self,path,kw=dict()):
         #print(f'Gallet->load {path=} {kw=}')
+
+        if self.run:
+            return
 
         if (got:=kw.pop('names',0)):
             self.imgnames=got
@@ -293,6 +297,7 @@ class Gallery:
 
                 self.progress.step()
 
+        self.run = 1
         hide(self.progress,'pack')
         self.lastwidth=self.on.W
         self.lastheight=self.on.H
@@ -432,9 +437,19 @@ class Path:
     def rowselected(self,e):
         pass
         row=self.tree.focus()
-        banner.config(text=row)
-        #print(f'--------{row=}')
-        _dict = self.all[row]
+        if '}' in row:
+            row = row.split('}')[:-1]
+            row = [i+'}' for i in row]
+        else:
+            row = [row]
+        #print(f'{row=}')
+        row = [i.lstrip().lstrip('{').rstrip().rstrip('}') for i in row]
+        row = row + ['']*(3-len(row))
+        id1, id2, id3 = row
+        print (f'{id1=} {id2=} {id3=}')
+
+        banner.config(text=id1)
+        _dict = self.all[id1]
         for widget,a,b in zip('ug vg tg'.split(), '_p _v _t'.split(),'_f_id _v_id _t_id'.split()):
             c_names = _dict[b]
             #print(f'{a=} path={_dict[a]} {c_names=}')
