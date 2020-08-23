@@ -145,6 +145,7 @@ class Gallery:
         self.idpath=dict()
         self.idname=dict()
 
+        self.selected = None
         self.on._bind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
         self.varProg = 0
 
@@ -293,6 +294,7 @@ class Gallery:
                 self.objthumb[c]=tmp.thumbnail((self.thumbW,self.thumbH))
                 self.objimgtk[c]=(tmp2:=PIL_Image_tk.PhotoImage(tmp))
                 self.on.c.create_image(x, y, anchor ='nw', image = tmp2,tag='i%d'%c)
+                self.on.c.tag_bind('i%d'%c,'<ButtonPress>',self.select)
 
                 #print(f'{c=} {y=} {x=}')
 
@@ -303,6 +305,22 @@ class Gallery:
         self.lastwidth=self.on.W
         self.lastheight=self.on.H
         self.on.updatesregion()
+
+    def select(self,e):
+        if not e.widget.find_withtag('select'):
+            self.on.c.create_rectangle(0, 0,self.thumbW,self.thumbH, fill =BLUE,outline='', stipple = 'gray50',tag='select')
+
+        self.on.c.itemconfig('select',state='normal')
+        self.selected=e.widget.find_withtag("current")
+        #tmp=self.on.c.coords('current')
+        tmp=self.on.c.bbox(self.selected)
+        self.on.c.moveto('select',tmp[0],tmp[1])
+        #print(f'{e.widget=} {e.widget.find_withtag("current")=}')
+
+    def deselect(self):
+        self.on.c.itemconfig('select',state='hidden')
+        self.selected = None
+
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
     def __init__(self,master, **kwargs):
@@ -697,6 +715,15 @@ validmenu=tk.Menu(main,tearoff=0)
 uncatmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(All))
 trainmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Top))
 validmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Bottom))
+
+uncatmenu.add_separator()
+trainmenu.add_separator()
+validmenu.add_separator()
+
+uncatmenu.add_checkbutton(label='Unselect', command=lambda : guncat.deselect())
+trainmenu.add_checkbutton(label='Unselect', command=lambda : g01.deselect())
+validmenu.add_checkbutton(label='Unselect', command=lambda : g02.pressed())
+
 
 #--------------------------------------------------------------------------------------------#
 #paned/right frame/second paned window/"uncategorized" frame/top 'toolbar'
