@@ -9,12 +9,11 @@ import math
 
 import time
 import threading
-import copy
 
 from tkinter import filedialog
 from tkinter import messagebox
-from PIL import Image as PIL_Image
-from PIL import ImageTk as PIL_Image_tk
+from PIL import Image
+from PIL import ImageTk
 
 put = print
 for i in 'x bottom left right top y both none'.split():
@@ -60,7 +59,7 @@ class Packer:
 class ScrollableCanvas(tk.Frame):
     def __init__(self,master, **kwargs):
 
-        super().__init__(master, *kwargs)
+        super().__init__(master, **kwargs)
         #tk.Frame.__init__(self,master,kwargs)
         self.parent=master
         self.attr=dict()
@@ -148,7 +147,16 @@ class Gallery:
         self.selected = None
         self.on._bind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
         self.varProg = 0
+        if (tmp:=kw.pop('scale',0)):
+            self.scalelabel1,self.scalelabel2 = kw.pop('scalelabel',0)
+            self.scalelabel1['text']=self.thumbW
+            self.scalelabel2['text']=self.thumbH
+            self.scalevar=tk.StringVar(value=self.thumbW)
+            tmp.config(from_=10,to=500)
+            tmp.config(variable=self.scalevar, command=self.scalechanged)
+            self.scale=tmp
 
+        self.previewrunid=None
     def Threadmoving(self,e):
         if 'W' not in vars(self.on) or self.count == 0:
             return
@@ -170,49 +178,6 @@ class Gallery:
         #print(f'Started {self.Tmove.getName()}')
         self.moving(e)
 
-    def moved0(self,e):
-        #self.Tmovelock.acquire()
-
-
-        #put('moved->grid')
-        X,Y,LenX,LenY,count = self.getGrid(self.imageCount)
-        #put(Y)
-        startI=0
-        myc=0
-        prog0.config()
-        self.lastWidth, self.lastHeight = self.on.W, self.on.H
-        #gen = (img for img )
-        #print(f'X {X} * Y {Y} = {len(X)*len(Y)} ;')
-        for _y in Y:
-            #
-            for _x,icount  in zip(X,count[startI:startI+LenX]):
-                #print(f'no of alive threads {threading.active_count():>10}')
-                print(f'{self.Tmovestop = } Active thread {threading.currentThread().getName()}')
-                if self.Tmovestop == 7:
-                    print('stopped')
-
-                    prog0.config(value=0)
-                    self.Tmovelock.release()
-                    self.Tmove = threading.Thread(target=self.moved,args=(e,))
-                    self.Tmovestop=0
-                    self.Tmove.start()
-                    return
-                #time.sleep(1)
-                prog0.step()
-                tag='i%d'%icount
-
-
-                #put(f'count {icount}; --> x {_x}; y {_y}; ')
-                self.on.c.moveto('i%d'%icount,_x, _y)
-                #put(f'moving  {tag} == i{self.on.c.find_withtag(tag)} to {_x},{_y}')
-            #put()
-            #print(f'MYC = {myc} {X},{count[startI:startI+LenX]}')
-            startI += LenX
-
-            myc+=1
-        self.icountrange=count
-        self.on.updatesregion()
-        #print(f'Thread {threading.currentThread()} Finished')
 
     def moving(self,e):
         #prog0.config(value=0)
@@ -260,7 +225,6 @@ class Gallery:
 
     #loadNamesFromList
     def load(self,path,kw=dict()):
-        #print(f'Gallet->load {path=} {kw=}')
 
         if self.run:
             return
@@ -290,12 +254,15 @@ class Gallery:
                 #print(f'{path=} {p=}')
                 self.idpath[c]=p
                 self.idname[c]=name
-                self.objpil[c]=(tmp:=PIL_Image.open(p))
-                self.objthumb[c]=tmp.thumbnail((self.thumbW,self.thumbH))
-                self.objimgtk[c]=(tmp2:=PIL_Image_tk.PhotoImage(tmp))
-                self.on.c.create_image(x, y, anchor ='nw', image = tmp2,tag='i%d'%c)
-                self.on.c.tag_bind('i%d'%c,'<ButtonPress>',self.select)
+                self.objpil[c]=Image.open(p)
 
+                self.objthumb[c]=self.objpil[c].resize((self.thumbW,self.thumbH))
+                self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
+                self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag='i%d'%c)
+                self.on.c.tag_bind('i%d'%c,'<ButtonPress>',self.select)
+                self.on.c.tag_bind('i%d'%c,'<Enter>',self.preview_enter)
+                self.on.c.tag_bind('i%d'%c,'<Leave>',self.preview_leave)
+                self.on.c.tag_bind('i%d'%c,'<Motion>',self.preview_motion)
                 #print(f'{c=} {y=} {x=}')
 
                 self.progress.step()
@@ -305,6 +272,9 @@ class Gallery:
         self.lastwidth=self.on.W
         self.lastheight=self.on.H
         self.on.updatesregion()
+
+        self.image_w,self.image_h = self.objpil[0].size
+        self.preview_init()
 
     def select(self,e):
         if not e.widget.find_withtag('select'):
@@ -320,6 +290,47 @@ class Gallery:
     def deselect(self):
         self.on.c.itemconfig('select',state='hidden')
         self.selected = None
+
+    def scalechanged(self,val):
+        new = int(float(val))
+        self.scalelabel1.config(text = new)
+        self.scalelabel2.config(text = new)
+    def hidescale(do = 1):
+        pass
+
+    def preview_init(self):
+        self.Preview = ScrollableCanvas(main)
+        self.Preview.SBH.quotehide()
+        self.Preview.SBV.quotehide()
+
+        w = self.image_w / self.thumbW
+        self.Preview_small_w = w
+        self.Preview_small_w_div_2 = w/2
+        self.on.c.create_line(0,0,w,0,w,w,0,w,0,0,fill='white',tag='small',state='hidden')
+        self.Preview.c.create_image(0,0,image='',tag='img')
+        self.Preview.place(x = 0 , y = 0 , width = 0 , height = 0)
+
+    def preview_enter(self,e):
+        i = self.on.c.find_withtag('current')[0]
+        tag = self.on.c.gettags(i)[0]
+        tag = int(tag[1:])
+        self.on.c.itemconfig('small',state='normal')
+        w = min(main.winfo_height(), get_left_pane_width())
+        self.Preview.place(width=w , height=w)
+        self.Preview_size = self.objpil[tag].size
+        self.Preview_img = ImageTk.PhotoImage(self.objpil[tag])
+        self.Preview.c.itemconfig('img',image = self.Preview_img )
+
+    def preview_leave(self,e):
+        self.Preview.place(width=0 , height=0)
+        self.on.c.itemconfig('small',state='hidden')
+
+    def preview_motion(self,e):
+        w = self.Preview_small_w_div_2
+        fx , fy = (e.x-w) / self.thumbW , (e.y-w) / self.thumbH
+        self.on.c.moveto('small', e.x - w , e.y - w )
+        self.Preview.c.xview_moveto(fx)
+        self.Preview.c.yview_moveto(fy)
 
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
@@ -504,6 +515,7 @@ class Collapse:
             for k,val in self.config.items():
                 self.call(k,val)
 
+
 def _center(w,width=None,h=None):
     s1 = ['{}']*2
     if width:
@@ -682,11 +694,25 @@ Tree.grid_rowconfigure([0],weight=1,uniform=1)
 #-----------------------------------Right Frame----------------------------------------------#
 #--------------------------------------------------------------------------------------------#
 
+def set_left_pane_width(val , widget = paned):
+    main.tk.eval(f'{str(widget)} sashpos 0 {val}')
 
+def get_left_pane_width(widget = paned):
+    #print( main.tk.eval(f'{str(paned)} pane {str(Tree)}') ) # -width {ww}
+    x = main.tk.eval(f'{str(widget)} sashpos 0')
+    x = float(x)
+    return x
+
+def maponce(e):
+    w = frame0.winfo_width()
+    w_div_2 = int(w / 2)
+    set_left_pane_width(w_div_2)
+    e.widget.bind(f'<{str(e.type)}>','')
 
 # paned/right frame/
 paned.add(right:=ttk.Frame(paned),weight=1)
 
+right.bind('<Map>',maponce)
 
 #--------------------------------------------------------------------------------------------#
 
@@ -736,6 +762,12 @@ validmenu.add_checkbutton(label='Unselect', command=lambda : g02.pressed())
 
 #--------------------------------------------------------------------------------------------#
 
+# paned/right frame/"uncategorized" frame/thumbnail size scale
+(uncatscale:=ttk.Scale(uncattop,)).pack(side=LEFT , expand = 0, fill=X)
+(uncatscalelabel1:=ttk.Label(uncattop,text='')).pack(side=LEFT , expand = 0, fill=X)
+(uncatscalelabelx:=ttk.Label(uncattop,text='x')).pack(side=LEFT , expand = 0, fill=X)
+(uncatscalelabel2:=ttk.Label(uncattop,text='')).pack(side=LEFT , expand = 0, fill=X)
+#--------------------------------------------------------------------------------------------#
 
 
 #paned/right frame/second paned window/"uncategorized" frame/scroll canvas
@@ -751,7 +783,7 @@ uncatprog.config(variable=uncatprog.Variable)
 hide(uncatprog,'pack', before = uncatscroll)
 
 #--------------------------------------------------------------------------------------------#
-guncat = Gallery(on=uncatscroll,progress=uncatprog)
+guncat = Gallery(on=uncatscroll,progress=uncatprog,scale=uncatscale,scalelabel=[uncatscalelabel1,uncatscalelabel2])
 #--------------------------------------------------------------------------------------------#
 
 
