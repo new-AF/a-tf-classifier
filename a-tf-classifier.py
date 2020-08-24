@@ -14,7 +14,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 from PIL import Image
 from PIL import ImageTk
-
+from PIL import ImageOps
 put = print
 for i in 'x bottom left right top y both none'.split():
     globals()[i.upper()]=i
@@ -255,8 +255,8 @@ class Gallery:
                 self.idpath[c]=p
                 self.idname[c]=name
                 self.objpil[c]=Image.open(p)
-
                 self.objthumb[c]=self.objpil[c].resize((self.thumbW,self.thumbH))
+                #self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
                 self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
                 self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag='i%d'%c)
                 self.on.c.tag_bind('i%d'%c,'<ButtonPress>',self.select)
@@ -274,6 +274,7 @@ class Gallery:
         self.on.updatesregion()
 
         self.image_w,self.image_h = self.objpil[0].size
+
         self.preview_init()
 
     def select(self,e):
@@ -304,11 +305,15 @@ class Gallery:
         self.Preview.SBV.quotehide()
 
         w = self.image_w / self.thumbW
+
         self.Preview_small_w = w
-        self.Preview_small_w_div_2 = w/2
+        self.Preview_small_w_div_2 = (w_div_2:=w/2)
+        self.Preview_pad = int(w_div_2 * w)
         self.on.c.create_line(0,0,w,0,w,w,0,w,0,0,fill='white',tag='small',state='hidden')
         self.Preview.c.create_image(0,0,image='',tag='img')
         self.Preview.place(x = 0 , y = 0 , width = 0 , height = 0)
+        #4 corners
+        self.r1x , self.r2x , self.r1y , self.r2y = [ w_div_2 , self.thumbW - w_div_2 , self.thumbH , self.thumbH - w_div_2 ]
 
     def preview_enter(self,e):
         i = self.on.c.find_withtag('current')[0]
@@ -318,17 +323,20 @@ class Gallery:
         w = min(main.winfo_height(), get_left_pane_width())
         self.Preview.place(width=w , height=w)
         self.Preview_size = self.objpil[tag].size
-        self.Preview_img = ImageTk.PhotoImage(self.objpil[tag])
+        self.Preview_img = ImageTk.PhotoImage(ImageOps.expand(self.objpil[tag],self.Preview_pad,(255,255,255)))
         self.Preview.c.itemconfig('img',image = self.Preview_img )
 
     def preview_leave(self,e):
+        pass
         self.Preview.place(width=0 , height=0)
-        self.on.c.itemconfig('small',state='hidden')
+        #self.on.c.itemconfig('small',state='hidden')
 
     def preview_motion(self,e):
         w = self.Preview_small_w_div_2
-        fx , fy = (e.x-w) / self.thumbW , (e.y-w) / self.thumbH
+        fx , fy = (e.x) / self.thumbW , (e.y) / self.thumbH
+        #fx , fy = (e.x + (e.x < self.r1x)*(-w) + (e.x > self.r2x)*(w) ) / self.thumbW , (e.y-w) / self.thumbH
         self.on.c.moveto('small', e.x - w , e.y - w )
+        #print(f'{fx = } {fy = }')
         self.Preview.c.xview_moveto(fx)
         self.Preview.c.yview_moveto(fy)
 
