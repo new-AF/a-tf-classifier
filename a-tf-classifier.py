@@ -19,7 +19,7 @@ put = print
 for i in 'x bottom left right top y both none'.split():
     globals()[i.upper()]=i
 
-BLUE,RED,YELLOW,GREEN = 'blue red yellow green'.split()
+BLACK,BLUE,RED,YELLOW,GREEN = 'black blue red yellow green'.split()
 
 # for getcwd
 import os
@@ -73,7 +73,7 @@ class ScrollableCanvas(tk.Frame):
         self.c=self.C.widget
 
         self.configscroll()
-        self._bind(self.c,configure=self.eConfigure,map=self.eMap)
+        self.localBind(self.c,configure=self.eConfigure,map=self.eMap)
         #print('a scrollable canvas created',self.c.bbox('all'))
     def addpropsfor(self,_for,**kw):
         if _for not in self.attr:
@@ -88,7 +88,7 @@ class ScrollableCanvas(tk.Frame):
         self.sbH.config(command = self.c.xview)
         self.c.config(xscrollcommand=self.sbH.set)
         self.c.config(yscrollcommand = self.sbV.set)
-    def _bind(self,target,**kw):
+    def localBind(self,target,**kw):
         for k,v in kw.items():
             add=None
             if k[-1]=='_':
@@ -145,7 +145,7 @@ class Gallery:
         self.idname=dict()
 
         self.selected = None
-        self.on._bind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
+        self.on.localBind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
         self.varProg = 0
         if (tmp:=kw.pop('scale',0)):
             self.scalelabel1,self.scalelabel2 = kw.pop('scalelabel',0)
@@ -258,11 +258,18 @@ class Gallery:
                 self.objthumb[c]=self.objpil[c].resize((self.thumbW,self.thumbH))
                 #self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
                 self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
+
+                tag = 'i%d'%c
                 self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag='i%d'%c)
-                self.on.c.tag_bind('i%d'%c,'<ButtonPress>',self.select)
-                self.on.c.tag_bind('i%d'%c,'<Enter>',self.preview_enter)
-                self.on.c.tag_bind('i%d'%c,'<Leave>',self.preview_leave)
-                self.on.c.tag_bind('i%d'%c,'<Motion>',self.preview_motion)
+
+                self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
+                self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
+
+                self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
+                self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
+                self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
+
+
                 #print(f'{c=} {y=} {x=}')
 
                 self.progress.step()
@@ -282,7 +289,10 @@ class Gallery:
             self.on.c.create_rectangle(0, 0,self.thumbW,self.thumbH, fill =BLUE,outline='', stipple = 'gray50',tag='select')
 
         self.on.c.itemconfig('select',state='normal')
-        self.selected=e.widget.find_withtag("current")
+
+        self.selected=e.widget.find_withtag("current")[0]
+        self.sTag = self.on.c.gettags(self.selected)[0]
+
         #tmp=self.on.c.coords('current')
         tmp=self.on.c.bbox(self.selected)
         self.on.c.moveto('select',tmp[0],tmp[1])
@@ -301,7 +311,7 @@ class Gallery:
 
     def preview_init(self):
         self.Preview = ScrollableCanvas(main)
-
+        self.Preview.config(highlightbackground = BLACK , highlightthickness = 2)
         self.Preview.SBH.quotehide()
         self.Preview.SBV.quotehide()
 
@@ -324,7 +334,8 @@ class Gallery:
 
         self.Preview.updatesregion()
 
-        self.Preview.place(x = 0 , y = 100 , width = 0 , height = 0)
+        self.Preview_yPlace = Tree.winfo_rooty() - main.winfo_rooty()
+        self.Preview.place(x = 0 , y = self.Preview_yPlace , width = 0 , height = 0)
 
     def preview_enter(self,e):
 
@@ -336,7 +347,7 @@ class Gallery:
         #self.on.c.itemconfig('small',state='normal') # moved to preview_motion
         #print(f'ENTER {self.Preview_tag = }')
 
-        w = min(main.winfo_height(), get_left_pane_width())
+        w = min(main.winfo_height() - self.Preview_yPlace , get_left_pane_width())
         self.Preview.place(width=w , height=w)
 
         #self.Preview_size = self.objpil[tagN].size
@@ -388,6 +399,28 @@ class Gallery:
 
         self.Preview.c.xview_moveto(fx)
         self.Preview.c.yview_moveto(fy)
+
+    def view_show(self, e):
+
+
+        c = int(self.sTag[1:])
+
+        View.title( self.idname [c] )
+
+
+        View.img0 = self.objpil[c]
+        View.img = self.objpil[c]
+
+
+        View.W , View.H = View.img.size
+        View_setImg()
+
+        if View.doMapBinded:
+            pass
+        else:
+            View_scroll.bind('<Map>', View_onMap)
+
+        _showToplevel(View)
 
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
@@ -574,20 +607,23 @@ class Collapse:
 
 
 def _center(w,width=None,h=None):
-    s1 = ['{}']*2
+    s1 = ['']*2
     if width:
         s1[0]=str(width)
     if h:
         s1[1]=str(h)
     #print(f'{s1=}')
-    s1='x'.join(s1)
-    s2='+{}+{}'.format(int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2),int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2))
 
-    w.geometry('%s%s'%(s1,s2))
+    newx , newy = int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2) , int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)
+    s = f'+{newx}+{newy}'
+    if width and h:
+        s = f'{s1[0]}x{s1[1]}{s}'
+    w.geometry(s)
 
 def _showToplevel(w):
-    w.deiconify()
     _center(w)
+    w.deiconify()
+
 def _hideToplevel(w):
     w.withdraw()
 def _alterToplevelClose(w):
@@ -771,6 +807,87 @@ paned.add(right:=ttk.Frame(paned),weight=1)
 
 right.bind('<Map>',maponce)
 
+#--------------------------------------------------------------------------------------------#
+# a mini-image view toplevel window
+View = tk.Toplevel(main)
+_hideToplevel(View)
+_alterToplevelClose(View)
+
+#                                 Toolbar
+View_tbar = ttk.Frame(View)
+View_tbar.pack(side = TOP, fill = X)
+
+View_tbar_banner = ttk.Label(View_tbar,text = '' , anchor = 'center')
+View_tbar_banner.pack(side = TOP, fill = X)
+
+View_tbar_sbh  = ttk.Separator(View_tbar , orient = 'horizontal')
+View_tbar_sbh.pack(side = TOP, fill = X)
+
+View_scroll = ScrollableCanvas(View)
+View_scroll.pack(side = TOP , expand = 1 , fill = BOTH)
+
+View_scroll.config(highlightbackground = BLACK , highlightthickness = 2)
+
+View_tbar_full = ttk.Button(View_tbar, text = '1:1')
+View_tbar_full.pack(side = LEFT, padx = [10 , 0])
+
+View_tbar_fit = tk.Checkbutton(View_tbar, text = 'Fit to window' , indicatoron = 0)
+View_tbar_fit.pack(side = LEFT)
+
+View_scroll.c.create_image(0,0 , tag = 'img')
+
+View.doMapBinded = 1
+
+def View_setImg():
+
+    View.imgtk = ImageTk.PhotoImage(image = View.img)
+    View_scroll.c.itemconfig('img' , image = View.imgtk)
+    w , h = View.img.size
+    View_tbar_banner['text'] = f'({w/View.W*100:.2f}%) {w} x {h} Pixels'
+
+def View_onMap(e,*r):
+    print(f'{ r = } { e.widget = }')
+    return
+    e.widget.c.xview_moveto(0.0)
+    e.widget.c.yview_moveto(0.0)
+
+
+def View_fitOnClick():
+
+    if 'fitVar' in vars(View_tbar_fit):
+        pass
+    else:
+        View_tbar_fit.fitVar = tk.IntVar(value = 1)
+        View_tbar_fit['variable'] = View_tbar_fit.fitVar
+
+    v = View_tbar_fit.fitVar.get()
+    if v:
+        View_scroll.c.bind('<Configure>', View_fitResize)
+    else:
+        View_scroll.c.bind('<Configure>',"" )
+        View_fullOnClick()
+
+    #print(f'View_fitOnClick {View_tbar_fit.fitVar.get() = }')
+
+def View_fitResize(e):
+    w , h = e.width , e.height
+
+    m = min(w,h)
+
+    View.img= View.img0.resize((m,m))
+
+    View_setImg()
+
+def View_fullOnClick():
+
+    View.img= View.img0.resize((View.W,View.H))
+
+    View_setImg()
+
+
+View_tbar_fit['command'] = View_fitOnClick
+View_tbar_full['command'] = View_fullOnClick
+View_tbar_banner['font'] = {'weight':'bold'}
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/class banner frame/
