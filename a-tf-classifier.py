@@ -310,19 +310,18 @@ class Gallery:
         self.Preview_ratio = ratio
         self.Preview_ratioDiv2 = (ratioDiv2 := ratio/2)
         self.Preview_pad = int(ratioDiv2 * ratio)
-        self.on.c.create_line(0,0,ratio,0,ratio,ratio,0,ratio,0,0,fill='white',tag='small',state='hidden')
-
-
-
-        # artificial padding
         self.Preview_imgPadX , self.Preview_imgPadX = int(self.Preview_pad/2) , int(self.Preview_pad/2)
+
+        self.on.c.create_line(0,0,ratio,0,ratio,ratio,0,ratio,0,0,fill='white',tag='small',state='hidden')
+        # artificial padding
         self.Preview.c.create_rectangle(0,0, self.Preview_pad + self.image_w , self.Preview_pad + self.image_w , outline = "")
+
         self.Preview.c.update()
         cx , cy = self.Preview.c.canvasx(0) , self.Preview.c.canvasy(0)
-        print(f'INIT {self.Preview_pad = } {cx = } {cy = }')
-
+        #print(f'INIT {self.Preview_pad = } {cx = } {cy = }')
         self.Preview.c.create_image(0,0 ,image='',tag='img')
         #self.Preview.c.moveto('img',cx+self.Preview_pad , cy+self.Preview_pad)
+
         self.Preview.updatesregion()
 
         self.Preview.place(x = 0 , y = 100 , width = 0 , height = 0)
@@ -331,13 +330,18 @@ class Gallery:
 
         i = self.on.c.find_withtag('current')[0]
         self.Preview_tag = self.on.c.gettags(i)[0]
+
         tagN = int(self.Preview_tag[1:])
-        self.on.c.itemconfig('small',state='normal')
-        print(f'ENTER {self.Preview_tag = }')
+
+        #self.on.c.itemconfig('small',state='normal') # moved to preview_motion
+        #print(f'ENTER {self.Preview_tag = }')
+
         w = min(main.winfo_height(), get_left_pane_width())
         self.Preview.place(width=w , height=w)
-        self.Preview_size = self.objpil[tagN].size
+
+        #self.Preview_size = self.objpil[tagN].size
         self.Preview_pil = self.objpil[tagN]
+
         #print(f'ENTER {self.Preview_pil = } {self.Preview_size =} {self.Preview_pad = }')
         #self.Preview_expanded = ImageOps.expand(self.Preview_pil, border = self.Preview_pad, fill = (255,255,255))
         #print(f'ENTER {self.Preview_expanded = }')
@@ -345,32 +349,43 @@ class Gallery:
 
         self.Preview.c.itemconfig('img',image = self.Preview_img )
         self.Preview.c.moveto('img',self.Preview_imgPadX , self.Preview_imgPadX)
+
         self.Preview.updatesregion(1)
 
     def preview_leave(self,e):
         pass
         self.Preview.place(width=0 , height=0)
+
         main.after(50,self.preview_leave_2) # hack to prevent interpreter hang
+
         main.update()
+
         self.on.c.itemconfig('small',state='hidden')
-
-
 
     def preview_leave_2(self):
         self.on.c.itemconfig('small',state='hidden')
 
     def preview_motion(self,e):
+
         w = self.Preview_ratioDiv2
+
         cx,cy = self.on.c.canvasx(0), self.on.c.canvasy(0)
         tx,ty = self.on.c.coords(self.Preview_tag)
+
         x = e.x - (tx - cx)
         y = e.y - (ty - cy)
+        fx,fy = x/self.thumbW, y/self.thumbH
+
         #fx , fy = (e.x - self.Preview_ix) / self.thumbW , (iy - e.y) / self.thumbH
         #fx , fy = (e.x + (e.x < self.r1x)*(-w) + (e.x > self.r2x)*(w) ) / self.thumbW , (e.y-w) / self.thumbH
-        self.on.c.moveto('small', e.x - w , e.y - w )
-        fx,fy = x/self.thumbW, y/self.thumbH
+
+        self.on.c.itemconfig('small',state='normal')
+        self.on.c.moveto('small', (cx + e.x) - w , (cy + e.y) - w )
+
         #self.on.c.moveto()
+        #print(f'M {e.x = } {e.y = } {x = } {y = } {e.x-w = } {e.y-w = }')
         #print(f'M {ty-cy = } {e.x = } {e.y = } {tx = } {ty = } {x = } {y = }')
+
         self.Preview.c.xview_moveto(fx)
         self.Preview.c.yview_moveto(fy)
 
