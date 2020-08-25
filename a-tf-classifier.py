@@ -311,7 +311,7 @@ class Gallery:
 
     def preview_init(self):
         self.Preview = ScrollableCanvas(main)
-        self.Preview.config(highlightbackground = BLACK , highlightthickness = 2)
+        self.Preview.config(highlightbackground = GREEN , highlightthickness = 2)
         self.Preview.SBH.quotehide()
         self.Preview.SBV.quotehide()
 
@@ -826,13 +826,19 @@ View_tbar_sbh.pack(side = TOP, fill = X)
 View_scroll = ScrollableCanvas(View)
 View_scroll.pack(side = TOP , expand = 1 , fill = BOTH)
 
-View_scroll.config(highlightbackground = BLACK , highlightthickness = 2)
+View_scroll.config(highlightbackground = GREEN , highlightthickness = 2)
 
-View_tbar_full = ttk.Button(View_tbar, text = '1:1')
+View_tbar_full = ttk.Button(View_tbar, text = 'Reset Size')
 View_tbar_full.pack(side = LEFT, padx = [10 , 0])
 
 View_tbar_fit = tk.Checkbutton(View_tbar, text = 'Fit to window' , indicatoron = 0)
 View_tbar_fit.pack(side = LEFT)
+
+View_tbar_zoomin = ttk.Button(View_tbar, text = 'Zoom In' , command = lambda: View_zoomOnClick(1))
+View_tbar_zoomin.pack(side = LEFT , padx = [20,0])
+
+View_tbar_zoomout = ttk.Button(View_tbar, text = 'Zoom Out' , command = lambda: View_zoomOnClick(-1))
+View_tbar_zoomout.pack(side = LEFT)
 
 View_scroll.c.create_image(0,0 , tag = 'img')
 
@@ -844,6 +850,7 @@ def View_setImg():
     View_scroll.c.itemconfig('img' , image = View.imgtk)
     w , h = View.img.size
     View_tbar_banner['text'] = f'({w/View.W*100:.2f}%) {w} x {h} Pixels'
+    View_scroll.updatesregion()
 
 def View_onMap(e,*r):
     print(f'{ r = } { e.widget = }')
@@ -863,6 +870,7 @@ def View_fitOnClick():
     v = View_tbar_fit.fitVar.get()
     if v:
         View_scroll.c.bind('<Configure>', View_fitResize)
+        View_scroll.c.event_generate('<Configure>')
     else:
         View_scroll.c.bind('<Configure>',"" )
         View_fullOnClick()
@@ -870,13 +878,24 @@ def View_fitOnClick():
     #print(f'View_fitOnClick {View_tbar_fit.fitVar.get() = }')
 
 def View_fitResize(e):
-    w , h = e.width , e.height
+    cw , ch = e.widget.winfo_width() , e.widget.winfo_height()
 
-    m = min(w,h)
+    w , h = View.img.size
+    r = w/h
 
-    View.img= View.img0.resize((m,m))
+    ch = r*cw
+    iw = int( ch/r )
+    ih = int( iw*r )
+
+    #print(f'{w = } {h =} {r = } {cw =} {ch =} {iw =} {ih =} ')
+    View.img= View.img0.resize((iw,ih))
 
     View_setImg()
+
+    e.widget.moveto('img',0,0)
+    e.widget.xview_moveto(0.0)
+    e.widget.yview_moveto(0.0)
+    View_scroll.updatesregion()
 
 def View_fullOnClick():
 
@@ -884,10 +903,22 @@ def View_fullOnClick():
 
     View_setImg()
 
+def View_zoomOnClick(sign):
+
+    r = sign*0.1
+    w , h = View.img.size
+    w += r*w
+    h += r*h
+
+    w = int(w)
+    h = int(h)
+
+    View.img= View.img0.resize((w,h))
+
+    View_setImg()
 
 View_tbar_fit['command'] = View_fitOnClick
 View_tbar_full['command'] = View_fullOnClick
-View_tbar_banner['font'] = {'weight':'bold'}
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/class banner frame/
