@@ -154,7 +154,10 @@ class Gallery:
         self.varProg = 0
 
         self.Scale = kw.pop('scale',0)
-        self.Scale.s.config(command=self.scale_changed)
+        self.Scale.start = 0
+        self.Scale.s.bind('<ButtonPress>',self.scale_start)
+        self.Scale.s.bind('<ButtonRelease>',self.scale_end)
+        self.Scale.s.config(command = self.scale_command)
 
         self.previewrunid=None
     def Threadmoving(self,e):
@@ -277,7 +280,9 @@ class Gallery:
 
         self.preview_init()
         self.Scale.Var.set(self.thumbW)
+        self.scale_command(self.thumbW)
         self.Scale.s.config(to = self.image_w)
+        show(self.Scale,'pack')
 
     def select(self,e):
         if not e.widget.find_withtag('select'):
@@ -297,11 +302,27 @@ class Gallery:
         self.on.c.itemconfig('select',state='hidden')
         self.selected = None
 
-    def scale_changed(self,val):
-        new = int(float(val))
-        self.Scale.lVar.set(value = new)
-        self.imgW = new
-        self.imgH = new
+    def scale_start(self,e):
+        self.Scale.start = 1
+
+    def scale_end(self,e):
+        if not self.Scale.start:
+            return
+        val = self.Scale.Var.get()
+        val = int(float(val))
+        #print (f'{val = }')
+        self.scale_resize(val)
+        self.Scale.start = 0
+
+    def scale_command(self,val):
+        val = int(float(val))
+        self.Scale.lVar.set(value = val)
+
+    def scale_resize(self,val):
+        self.Scale.lVar.set(value = val)
+
+        self.imgW = val
+        self.imgH = val
         self.resize()
 
 
@@ -1013,6 +1034,8 @@ uncatscaleF.l1.pack(side=LEFT , expand = 0, fill=X)
 uncatscaleF.x.pack(side=LEFT , expand = 0, fill=X)
 uncatscaleF.l2.pack(side=LEFT , expand = 0, fill=X)
 
+hide(uncatscaleF,'pack')
+
 #--------------------------------------------------------------------------------------------#
 
 
@@ -1065,6 +1088,8 @@ g01scaleF.s.pack(side=LEFT , expand = 0, fill=X)
 g01scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
 g01scaleF.x.pack(side=LEFT , expand = 0, fill=X)
 g01scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
+
+hide(g01scaleF,'pack')
 
 #--------------------------------------------------------------------------------------------#
 
@@ -1123,6 +1148,7 @@ g02scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
 g02scaleF.x.pack(side=LEFT , expand = 0, fill=X)
 g02scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
 
+hide(g02scaleF,'pack')
 
 #--------------------------------------------------------------------------------------------#
 
