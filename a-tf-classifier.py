@@ -148,6 +148,8 @@ class Gallery:
         self.unused_selected = []
         self.used_selected = []
 
+        #selected imgs id s
+        self.selected_list = []
 
         self.count=0
         self.count_selected = 0
@@ -254,7 +256,7 @@ class Gallery:
         self.progress.config(max=self.count)
         show(self.progress,'pack')
 
-        print(f'~~~ {self.count} \n')
+        #print(f'~~~ {self.count} \n')
         for y,rest in self.getcoords('y x count full names'):
             for x,c,full,name in rest:
                 #print(f'{y=} {x=} {c=} {full=} {name=}')
@@ -306,11 +308,13 @@ class Gallery:
             self.deselect()
 
         self.selected=e.widget.find_withtag("current")[0] #id
-        self.sTag = self.on.c.gettags(self.selected)[0] #tag
+        self.sTag = int(self.on.c.gettags(self.selected)[0][1:]) #tag
+        self.selected_list.append(self.sTag)
         ix , iy = self.on.c.coords(self.selected)
 
         if (not self.unused_selected) or SHIFT_ON:
-            self.unused_selected.append( self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select',width = 0) )
+            self.unused_selected.append( id:=self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select',width = 0) )
+            self.on.c.tag_bind(id,'<Double-ButtonPress>',self.view_show)
 
         id = self.unused_selected.pop(-1)
         self.used_selected.append(id)
@@ -320,6 +324,7 @@ class Gallery:
 
         self.on.c.coords(id , [ ix , iy , ix+self.imgW , iy+self.imgH ] )
         #print(f'{e.widget=} {e.widget.find_withtag("current")=}')
+
 
         if SHIFT_ON:
             self.count_selected += 1
@@ -337,7 +342,7 @@ class Gallery:
 
         self.selected = None
         self.sTag = None
-
+        self.selected_list[:] = []
         self.count_selected = 0
 
         self.update_labelframe_text()
@@ -461,24 +466,34 @@ class Gallery:
         self.Preview.c.yview_moveto(fy)
 
     def view_show(self, e):
+        #print(f'+++{self.selected_list=}')
+        View.lo = 0
+        View.at = len(self.selected_list)-1
+        View.hi = View.at
+        cs =  self.selected_list # instead of [int(i[1:]) for i in
 
-
-        c = int(self.sTag[1:])
-        #fix this
-        View.title( self._dict['_f_id'][c] )
-
-
-        View.img0 = self.objpil[c]
-        View.img = self.objpil[c]
+        View.titles = [ self._dict['_f_id'][c] for c in cs]
+        View.img0_list = [self.objpil[c] for c in cs]
+        View.img = View.img0_list[View.at]
 
 
         View.W , View.H = View.img.size
+        View.iW , View.iH = View.W , View.H #current user-set width and height
+
         View_setImg()
 
         if View.doMapBinded:
             pass
         else:
             View_scroll.bind('<Map>', View_onMap)
+
+        if View.at > 0:
+            state = 'normal'
+        else:
+            state = 'disabled'
+
+        View_tbar_back.config(state = state )
+        View_tbar_next.config(state = state )
 
         _showToplevel(View)
 
@@ -538,7 +553,7 @@ class Path:
         for i,c in zip('Classes-Has Uncategorized Images-Has Validation-Has Training'.split('-'),self.cols):
             self.tree.heading(c,anchor='center',text=i)
             self.tree.column(c,minwidth=10,width=70,anchor='center')
-            print(c)
+            #print(c)
         #self.tree.column(1,anchor='w')
         self.tree.column(0,anchor='w')
         self.tree.heading(0,anchor='w')
@@ -805,7 +820,7 @@ def hide(w,geom,**kw):
         w.place_forget()
 
 #unhide
-def show(w,geom):
+def show(w,geom,**kw):
     geom=geom.lower()
     if geom == 'grid':
         tmp = w.GRID_CONFIG
@@ -900,8 +915,18 @@ _alterToplevelClose(View)
 View_tbar = ttk.Frame(View)
 View_tbar.pack(side = TOP, fill = X)
 
-View_tbar_banner = ttk.Label(View_tbar,text = '' , anchor = 'center')
-View_tbar_banner.pack(side = TOP, fill = X)
+View_tbar_first = ttk.Frame(View_tbar)
+View_tbar_first.pack(side = TOP, expand = 1, fill = X)
+
+View_tbar_first_count = ttk.Label(View_tbar_first , text = '' , anchor = 'w')
+View_tbar_first_count.pack(side = LEFT, fill = X)
+
+View_tbar_first_sbv = ttk.Separator(View_tbar_first , orient = 'vertical')
+View_tbar_first_sbv.pack(side = LEFT, fill = Y)
+
+View_tbar_first_banner = ttk.Label(View_tbar_first , text = '' , anchor = 'center')
+View_tbar_first_banner.pack(side = TOP, expand = 0, fill = NONE)
+
 
 View_tbar_sbh  = ttk.Separator(View_tbar , orient = 'horizontal')
 View_tbar_sbh.pack(side = TOP, fill = X)
@@ -911,14 +936,20 @@ View_scroll.pack(side = TOP , expand = 1 , fill = BOTH)
 
 View_scroll.config(highlightbackground = GREEN , highlightthickness = 2)
 
+View_tbar_back = ttk.Button(View_tbar, text = 'Previous' , command = lambda : View_back() )
+View_tbar_back.pack(side = LEFT)
+
+View_tbar_next = ttk.Button(View_tbar, text = 'Next', command = lambda : View_next() )
+View_tbar_next.pack(side = LEFT, padx = [0 , 20])
+
 View_tbar_full = ttk.Button(View_tbar, text = 'Reset Size')
-View_tbar_full.pack(side = LEFT, padx = [10 , 0])
+View_tbar_full.pack(side = LEFT)
 
 View_tbar_fit = tk.Checkbutton(View_tbar, text = 'Fit to window' , indicatoron = 0)
-View_tbar_fit.pack(side = LEFT)
+View_tbar_fit.pack(side = LEFT, padx = [0 , 20])
 
 View_tbar_zoomin = ttk.Button(View_tbar, text = 'Zoom In' , command = lambda: View_zoomOnClick(1))
-View_tbar_zoomin.pack(side = LEFT , padx = [20,0])
+View_tbar_zoomin.pack(side = LEFT)
 
 View_tbar_zoomout = ttk.Button(View_tbar, text = 'Zoom Out' , command = lambda: View_zoomOnClick(-1))
 View_tbar_zoomout.pack(side = LEFT)
@@ -927,13 +958,32 @@ View_scroll.c.create_image(0,0 , tag = 'img')
 
 View.doMapBinded = 1
 
-def View_setImg():
+def View_setImg(resize=1):
+
+    View.title(View.titles[View.at])
+    #
+    if resize:
+        View.img = View.img0_list[View.at].resize((View.iW,View.iH))
 
     View.imgtk = ImageTk.PhotoImage(image = View.img)
     View_scroll.c.itemconfig('img' , image = View.imgtk)
     w , h = View.img.size
-    View_tbar_banner['text'] = f'({w/View.W*100:.2f}%) {w} x {h} Pixels'
+    View_tbar_first_banner['text'] = f'({w/View.W*100:.2f}%) {w} x {h} Pixels'
+    View_tbar_first_count['text'] = '{} / {}'.format(View.at+1 , View.hi+1)
     View_scroll.updatesregion()
+
+def View_next():
+    #print(f'next {View.at=}')
+    if View.at < View.hi :
+        View.at += 1
+        View_setImg()
+
+def View_back():
+    #print(f'back {View.at=}')
+    if View.at > View.lo :
+        View.at += -1
+        View_setImg()
+
 
 def View_onMap(e,*r):
     print(f'{ r = } { e.widget = }')
@@ -944,9 +994,7 @@ def View_onMap(e,*r):
 
 def View_fitOnClick():
 
-    if 'fitVar' in vars(View_tbar_fit):
-        pass
-    else:
+    if 'fitVar' not in vars(View_tbar_fit):
         View_tbar_fit.fitVar = tk.IntVar(value = 1)
         View_tbar_fit['variable'] = View_tbar_fit.fitVar
 
@@ -956,7 +1004,7 @@ def View_fitOnClick():
         View_scroll.c.event_generate('<Configure>')
     else:
         View_scroll.c.bind('<Configure>',"" )
-        View_fullOnClick()
+        #View_fullOnClick()
 
     #print(f'View_fitOnClick {View_tbar_fit.fitVar.get() = }')
 
@@ -971,7 +1019,8 @@ def View_fitResize(e):
     ih = int( iw*r )
 
     #print(f'{w = } {h =} {r = } {cw =} {ch =} {iw =} {ih =} ')
-    View.img= View.img0.resize((iw,ih))
+    #View.img= View.img0_list[View.at].resize((iw,ih))
+    View.iW , View.iH = iw , ih
 
     View_setImg()
 
@@ -982,7 +1031,8 @@ def View_fitResize(e):
 
 def View_fullOnClick():
 
-    View.img= View.img0.resize((View.W,View.H))
+    #View.img= View.img0_list[View.at] #.resize((View.W,View.H)) # assumes imgs are of same size &
+    View.iW , View.iH = View.W , View.H
 
     View_setImg()
 
@@ -996,7 +1046,8 @@ def View_zoomOnClick(sign):
     w = int(w)
     h = int(h)
 
-    View.img= View.img0.resize((w,h))
+    #View.img= View.img0_list[View.at].resize((w,h))
+    View.iW , View.iH = w , h
 
     View_setImg()
 
