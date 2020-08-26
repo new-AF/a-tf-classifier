@@ -23,6 +23,8 @@ for i in 'x bottom left right top y both none'.split():
 
 BLACK,BLUE,RED,YELLOW,GREEN = 'black blue red yellow green'.split()
 
+SHIFT_ON = 0
+
 # for getcwd
 import os
 import time
@@ -141,9 +143,15 @@ class Gallery:
         self.lastwidth , self.lastheight , self.padx , self.pady = 1, 1, 20, 20
         self.labelW , self.labelH = self.thumbW + int(self.padx/2) , 2*main.Labelfont.metrics('linespace')
 
+        #id s to be reused for multiple selections
+        # due to Tk's memory leaking of canvas id s
+        self.unused_selected = []
+        self.used_selected = []
 
 
         self.count=0
+        self.count_selected = 0
+
         self.imgnames = dict()
         self.objpil=dict()
         self.objthumb=dict()
@@ -283,24 +291,56 @@ class Gallery:
         self.scale_command(self.thumbW)
         self.Scale.s.config(to = self.image_w)
         show(self.Scale,'pack')
+        self.update_labelframe_text()
+
+    def update_labelframe_text(self):
+        parent = self.on.master
+        old = parent.cget('text').split()
+        old = old[:2] + ['| %d selected item(s)'%self.count_selected]
+        #print(f'{old = }')
+        parent.config(text = ' '.join(old))
+        #
 
     def select(self,e):
-        if not e.widget.find_withtag('select'):
-            self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select')
+        if not SHIFT_ON:
+            self.deselect()
 
-        self.on.c.itemconfig('select',state='normal')
+        self.selected=e.widget.find_withtag("current")[0] #id
+        self.sTag = self.on.c.gettags(self.selected)[0] #tag
+        ix , iy = self.on.c.coords(self.selected)
 
-        self.selected=e.widget.find_withtag("current")[0]
-        self.sTag = self.on.c.gettags(self.selected)[0]
+        if (not self.unused_selected) or SHIFT_ON:
+            self.unused_selected.append( self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select',width = 0) )
 
-        #tmp=self.on.c.coords('current')
-        tmp=self.on.c.bbox(self.selected)
-        self.on.c.moveto('select',tmp[0],tmp[1])
+        id = self.unused_selected.pop(-1)
+        self.used_selected.append(id)
+
+        self.on.c.itemconfig(id,state='normal')
+        x , y , w , h = self.on.c.coords(id)
+
+        self.on.c.coords(id , [ ix , iy , ix+self.imgW , iy+self.imgH ] )
         #print(f'{e.widget=} {e.widget.find_withtag("current")=}')
 
+        if SHIFT_ON:
+            self.count_selected += 1
+        else:
+            self.count_selected = 1
+
+        self.update_labelframe_text()
+
     def deselect(self):
-        self.on.c.itemconfig('select',state='hidden')
+        for i in self.used_selected:
+            self.on.c.itemconfig(i,state='hidden')
+
+        self.unused_selected = self.used_selected[:]
+        self.used_selected[:] = []
+
         self.selected = None
+        self.sTag = None
+
+        self.count_selected = 0
+
+        self.update_labelframe_text()
 
     def scale_start(self,e):
         self.Scale.start = 1
@@ -360,12 +400,12 @@ class Gallery:
     def preview_enter(self,e):
 
         i = self.on.c.find_withtag('current')[0]
-        self.Preview_tag = self.on.c.gettags(i)[0]
+        self.Current_tag = self.on.c.gettags(i)[0]
 
-        tagN = int(self.Preview_tag[1:])
+        tagN = int(self.Current_tag[1:])
 
         #self.on.c.itemconfig('small',state='normal') # moved to preview_motion
-        #print(f'ENTER {self.Preview_tag = }')
+        #print(f'ENTER {self.Current_tag = }')
 
         w = min(main.winfo_height() - self.Preview_yPlace , get_left_pane_width())
         self.Preview.place(width=w , height=w)
@@ -401,7 +441,7 @@ class Gallery:
         w = self.Preview_ratioDiv2
 
         cx,cy = self.on.c.canvasx(0), self.on.c.canvasy(0)
-        tx,ty = self.on.c.coords(self.Preview_tag)
+        tx,ty = self.on.c.coords(self.Current_tag)
 
         x = e.x - (tx - cx)
         y = e.y - (ty - cy)
@@ -960,8 +1000,20 @@ def View_zoomOnClick(sign):
 
     View_setImg()
 
+def Shift_start(e):
+    global SHIFT_ON
+    SHIFT_ON = 1
+def Shift_end(e):
+    global SHIFT_ON
+    SHIFT_ON = 0
+
 View_tbar_fit['command'] = View_fitOnClick
 View_tbar_full['command'] = View_fullOnClick
+
+#--------------------------------------------------------------------------------------------#
+# bind Shift key
+main.bind('<Shift-KeyPress>',Shift_start)
+main.bind('<Shift-KeyRelease>',Shift_end)
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/class banner frame/
