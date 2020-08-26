@@ -12,6 +12,8 @@ import threading
 
 from tkinter import filedialog
 from tkinter import messagebox
+import tkinter.font
+
 from PIL import Image
 from PIL import ImageTk
 from PIL import ImageOps
@@ -134,27 +136,25 @@ class Gallery:
         self.progress=kw.pop('progress')
 
         self.thumbW, self.thumbH = (50, 50)
+        self.imgW , self.imgH = self.thumbW , self.thumbH
+
         self.lastwidth , self.lastheight , self.padx , self.pady = 1, 1, 20, 20
+        self.labelW , self.labelH = self.thumbW + int(self.padx/2) , 2*main.Labelfont.metrics('linespace')
+
+
 
         self.count=0
         self.imgnames = dict()
         self.objpil=dict()
         self.objthumb=dict()
         self.objimgtk=dict()
-        self.idpath=dict()
-        self.idname=dict()
 
         self.selected = None
         self.on.localBind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
         self.varProg = 0
-        if (tmp:=kw.pop('scale',0)):
-            self.scalelabel1,self.scalelabel2 = kw.pop('scalelabel',0)
-            self.scalelabel1['text']=self.thumbW
-            self.scalelabel2['text']=self.thumbH
-            self.scalevar=tk.StringVar(value=self.thumbW)
-            tmp.config(from_=10,to=500)
-            tmp.config(variable=self.scalevar, command=self.scalechanged)
-            self.scale=tmp
+
+        self.Scale = kw.pop('scale',0)
+        self.Scale.s.config(command=self.scale_changed)
 
         self.previewrunid=None
     def Threadmoving(self,e):
@@ -163,6 +163,7 @@ class Gallery:
         #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
         if self.on.W > self.lastwidth and (self.on.W - self.lastwidth) < (self.thumbW + self.padx):
             return
+        return
         self.Tmovestop=0
         self.moving(e)
         if 'T1movelock' not in vars(self):
@@ -176,22 +177,14 @@ class Gallery:
             #print(f'*************************** exists maiking {self.Tmovestop = }')
             self.Tmovestop=1
         #print(f'Started {self.Tmove.getName()}')
-        self.moving(e)
+        #self.moving(e)
 
 
-    def moving(self,e):
-        #prog0.config(value=0)
 
-        for y,rest in self.getcoords():
-            for x,c in rest:
-                self.on.c.moveto('i%d'%c,x, y)
-                print(f'{c=} {y=} {x=}')
-        self.lastwidth=self.on.W
-        self.on.updatesregion()
 
-    def getcoords(self,**kw):
-        reqx = self.thumbW+self.padx
-        reqy = self.thumbH+self.pady
+    def getcoords(self,demand):
+        reqx = self.imgW+self.padx
+        reqy = self.imgH+self.pady
 
         xcount = math.floor(self.on.W/reqx)
         if not xcount:
@@ -205,62 +198,62 @@ class Gallery:
 
         count = 0
         start=0
-        if kw.pop('use_names',0):
+
+        if demand == 'y x count full names':
+            _count = list(self._dict['_f_id2'].keys())
+            _full = list(self._dict['_f_id2'].values())
+            _names = list(self._dict['_f_id'].values())
 
             while count < ycount:
-                yield((count*reqy),zip( range1,list(range2[start:start+xcount]),list(self.imgnames[start:start+xcount]) ))
+                yield((count*reqy),zip( range1,list(_count[start:start+xcount]),list(_full[start:start+xcount]) ,list(_names[start:start+xcount]) ))
                 start+= xcount
                 count+=1
-        elif kw.pop('use_dict',0):
+        elif demand == 'y x count pil_resized':
             while count < ycount:
-                yield( count*reqy, zip(range1,list(range2[start:start+xcount]),list(self.cnames.values())[start:start+xcount]) )
+                _count = list(self._dict['_f_id2'].keys())
+                yield((count*reqy),zip( range1,list(_count[start:start+xcount]), self._pil[start:start+xcount] ))
                 start+= xcount
-                count += 1
+                count+=1
 
+    def resize(self):
+        #prog0.config(value=0)
+        self._pil = list(map(lambda x: ImageTk.PhotoImage( x.resize((self.imgW,self.imgH)) ), list(self.objpil.values()) ))
+        for y,rest in self.getcoords('y x count pil_resized'):
+            for x,c,resized_img in rest:
+                tag = 'i%d'%c
+                self.on.c.itemconfig(tag, image = resized_img )
+                self.on.c.moveto(tag , x , y)
+                #print(f'{c=} {y=} {x=}')
+        self.lastwidth=self.on.W
+        self.on.updatesregion()
 
-    def Threadload(self,path,**kw):
+    def Threadload(self):
         #print('Threadload, Current Thread',threading.currentThread())
-        threading.Thread(target=self.load,args=(path,kw)).start()
+        threading.Thread(target=self.load,args=tuple()).start()
 
 
     #loadNamesFromList
-    def load(self,path,kw=dict()):
+    def load(self):
 
         if self.run:
             return
 
-        if (got:=kw.pop('names',0)):
-            self.imgnames=got
-            coords=self.getcoords(use_names=1)
-
-        elif (got:=kw.pop('cnames',0)):
-            self.cnames=got
-            coords=self.getcoords(use_dict=1)
-        else:
-            #load from this dir
-            got=os.listdir(path)
-            coords=self.getcoords(use_names=1)
-
-        self.count=len(got)
+        self.count = self._dict['_f_count']
         self.progress.Variable.set(0)
         self.progress.config(max=self.count)
         show(self.progress,'pack')
 
-        #print(f'~~~ {self.count} \n')
-        for y,rest in coords:
-            for x,c,name in rest:
-                #print(f'{y=} {x=} {c=} {name=}')
-                p=os.path.join(path,name)
-                #print(f'{path=} {p=}')
-                self.idpath[c]=p
-                self.idname[c]=name
-                self.objpil[c]=Image.open(p)
-                self.objthumb[c]=self.objpil[c].resize((self.thumbW,self.thumbH))
-                #self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
-                self.objimgtk[c]=ImageTk.PhotoImage(self.objthumb[c])
+        print(f'~~~ {self.count} \n')
+        for y,rest in self.getcoords('y x count full names'):
+            for x,c,full,name in rest:
+                #print(f'{y=} {x=} {c=} {full=} {name=}')
+                self.objpil[c] = Image.open(full)
+                self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
+                #self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
+                self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
 
                 tag = 'i%d'%c
-                self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag='i%d'%c)
+                self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
 
                 self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
                 self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
@@ -283,10 +276,12 @@ class Gallery:
         self.image_w,self.image_h = self.objpil[0].size
 
         self.preview_init()
+        self.Scale.Var.set(self.thumbW)
+        self.Scale.s.config(to = self.image_w)
 
     def select(self,e):
         if not e.widget.find_withtag('select'):
-            self.on.c.create_rectangle(0, 0,self.thumbW,self.thumbH, fill =BLUE,outline='', stipple = 'gray50',tag='select')
+            self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select')
 
         self.on.c.itemconfig('select',state='normal')
 
@@ -302,11 +297,15 @@ class Gallery:
         self.on.c.itemconfig('select',state='hidden')
         self.selected = None
 
-    def scalechanged(self,val):
+    def scale_changed(self,val):
         new = int(float(val))
-        self.scalelabel1.config(text = new)
-        self.scalelabel2.config(text = new)
-    def hidescale(do = 1):
+        self.Scale.lVar.set(value = new)
+        self.imgW = new
+        self.imgH = new
+        self.resize()
+
+
+    def scale_hide(do = 1):
         pass
 
     def preview_init(self):
@@ -385,10 +384,10 @@ class Gallery:
 
         x = e.x - (tx - cx)
         y = e.y - (ty - cy)
-        fx,fy = x/self.thumbW, y/self.thumbH
+        fx,fy = x/self.imgW, y/self.imgH
 
-        #fx , fy = (e.x - self.Preview_ix) / self.thumbW , (iy - e.y) / self.thumbH
-        #fx , fy = (e.x + (e.x < self.r1x)*(-w) + (e.x > self.r2x)*(w) ) / self.thumbW , (e.y-w) / self.thumbH
+        #fx , fy = (e.x - self.Preview_ix) / self.imgW , (iy - e.y) / self.imgH
+        #fx , fy = (e.x + (e.x < self.r1x)*(-w) + (e.x > self.r2x)*(w) ) / self.imgW , (e.y-w) / self.thumbH
 
         self.on.c.itemconfig('small',state='normal')
         self.on.c.moveto('small', (cx + e.x) - w , (cy + e.y) - w )
@@ -404,8 +403,8 @@ class Gallery:
 
 
         c = int(self.sTag[1:])
-
-        View.title( self.idname [c] )
+        #fix this
+        View.title( self._dict['_f_id'][c] )
 
 
         View.img0 = self.objpil[c]
@@ -496,19 +495,30 @@ class Path:
         _dict=dict()
         for d in _d:
             _p2,_d2,_f2=next(os.walk(os.path.join(_p,d)))
-            _dict[d]={'_p':_p2,
+            _dict[d]={'_p':_p2, #path of the class
                     '_f_id':dict(),
+                    '_f_id2':dict(),
+                    '_f_count':0,
                     '_v':'',
                     '_v_id':dict(),
+                    '_v_id2':dict(),
+                    '_v_count':dict(),
                     '_t':'',
                     '_t_id':dict(),
+                    '_t_id2':dict(),
+                    '_t_count':0,
                     'value':[self.no,self.no,self.no]} #values count (4)
 
-            _dict[d]['_f_id'] = dict( zip(range(len(_f2)), _f2 ) )
+            _lam2 = lambda x,base = _p2: os.path.join(base,x)
+            _len_generic = len(_f2)
 
-            if (tmpp:=len(_f2)):
+            _dict[d]['_f_id'] = dict( zip(range(_len_generic), _f2 ) )
+            _dict[d]['_f_count'] = _len_generic
+            _dict[d]['_f_id2'] = dict( zip(range(_len_generic), list(map(_lam2,_f2)) ) )
+
+            if _len_generic:
                 tmp = _dict[d]['value']
-                tmp[0] = tmpp
+                tmp[0] = _len_generic
                 _dict[d]['value'] = tmp
 
             _v_n=(list(filter(lambda x: x.lower() == 'validation',_d2)))
@@ -516,19 +526,27 @@ class Path:
             if _v_n:
                 _v_n = _v_n[0] #incase of different spelling variations
                 _dict[d]['_v']= ( _v:=os.path.join(_p2,_v_n) )
+                _lam2 = lambda x,base = _v: os.path.join(base,x)
                 _, _, _v_f = next(os.walk(_v))
-                _dict[d]['_v_id'] = dict( zip(range(len(_v_f)), _v_f:=list(filter(_lam,_v_f))) )
+                _len_generic = len(_v_f)
+                _dict[d]['_v_id'] = dict( zip(range(_len_generic), _v_f:=list(filter(_lam,_v_f))) )
+                _dict[d]['_v_id2'] = dict( zip(range(_len_generic), list(map(_lam2,_v_f))) )
+                _dict[d]['_v_count'] = _len_generic
                 tmp = _dict[d]['value']
-                tmp[1]=len(_v_f)
+                tmp[1] = _len_generic
                 _dict[d]['value'] = tmp
 
             if _t_n:
                 _t_n = _t_n[0]
                 _dict[d]['_t']= ( _t:=os.path.join(_p2,_t_n) )
                 _,_, _t_f = next(os.walk(_t))
-                _dict[d]['_t_id'] = dict( zip(range(len(_t_f)), _v_f:=list(filter(_lam,_t_f))) )
+                _len_generic = len(_t_f)
+                _lam2 = lambda x,base = _t: os.path.join(base,x)
+                _dict[d]['_t_id'] = dict( zip(range(_len_generic), _t_f:=list(filter(_lam,_t_f))) )
+                _dict[d]['_t_id2'] = dict( zip(range(_len_generic), list(map(_lam2,_t_f))) )
+                _dict[d]['_t_count'] = _len_generic
                 tmp= _dict[d]['value']
-                tmp[2] = len(_t_f)
+                tmp[2] = _len_generic
                 _dict[d]['value'] = tmp
 
         self.all = _dict
@@ -570,12 +588,15 @@ class Path:
 
         banner.config(text=id1)
         _dict = self.all[id1]
-        for widget,a,b in zip('ug vg tg'.split(), '_p _v _t'.split(),'_f_id _v_id _t_id'.split()):
-            c_names = _dict[b]
-            #print(f'{a=} path={_dict[a]} {c_names=}')
-            if c_names:
-                getattr(self,widget).Threadload(_dict[a],cnames = c_names)
-                #getattr(self,widget).load(_dict[a],dict(cnames=c_names))
+
+        self.ug._dict = dict(_p = _dict['_p'], _f_id = _dict['_f_id'] , _f_id2 = _dict['_f_id2'] , _f_count = _dict['_f_count'] )
+        self.tg._dict = dict(_p = _dict['_t'], _f_id = _dict['_t_id'] , _f_id2 = _dict['_t_id2'] , _f_count = _dict['_t_count'] )
+        self.vg._dict = dict(_p = _dict['_v'], _f_id = _dict['_v_id'] , _f_id2 = _dict['_v_id2'] , _f_count = _dict['_v_count'] )
+
+        self.ug.Threadload()
+        self.tg.Threadload()
+        self.vg.Threadload()
+
 
 class Collapse:
     def __init__(self,geom,*tobe): # frames; to be collapsed
@@ -661,6 +682,7 @@ def _getParentDir():
 
 # root window
 main = tk.Tk()
+main.font = None
 
 # popup
 aboutWindow = tk.Toplevel(main)
@@ -796,7 +818,7 @@ def get_left_pane_width(widget = paned):
     x = float(x)
     return x
 
-def maponce(e):
+def centerPane(e):
     w = frame0.winfo_width()
     w_div_2 = int(w / 2)
     set_left_pane_width(w_div_2)
@@ -805,7 +827,7 @@ def maponce(e):
 # paned/right frame/
 paned.add(right:=ttk.Frame(paned),weight=1)
 
-right.bind('<Map>',maponce)
+right.bind('<Map>',centerPane)
 
 #--------------------------------------------------------------------------------------------#
 # a mini-image view toplevel window
@@ -924,11 +946,16 @@ View_tbar_full['command'] = View_fullOnClick
 # paned/right frame/class banner frame/
 (bannerframe:=ttk.Labelframe(right,text=_textcenter('Class'))).place(x=0 , y = 0, relwidth=1, relheight=0.1)
 
+
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/class banner frame/class banner label
-(banner:=ttk.Label(bannerframe,text='',font=dict(weight='bold'))).pack(side=TOP )
+(banner:=ttk.Label(bannerframe,text='')).pack(side=TOP )
 
+
+main.Labelfont = tkinter.font.Font(font=banner.cget('font'))
+
+print(main.Labelfont.config(weight='bold'))
 #--------------------------------------------------------------------------------------------#
 
 
@@ -968,10 +995,24 @@ validmenu.add_checkbutton(label='Unselect', command=lambda : g02.pressed())
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/"uncategorized" frame/thumbnail size scale
-(uncatscale:=ttk.Scale(uncattop,)).pack(side=LEFT , expand = 0, fill=X)
-(uncatscalelabel1:=ttk.Label(uncattop,text='')).pack(side=LEFT , expand = 0, fill=X)
-(uncatscalelabelx:=ttk.Label(uncattop,text='x')).pack(side=LEFT , expand = 0, fill=X)
-(uncatscalelabel2:=ttk.Label(uncattop,text='')).pack(side=LEFT , expand = 0, fill=X)
+(uncatscaleF := ttk.Frame(uncattop)).pack(side=LEFT , expand = 0, fill=X, before = uncatbutton)
+
+uncatscaleF.Var = tk.StringVar(value='')
+uncatscaleF.lVar = tk.StringVar(value='')
+
+uncatscaleF.s = ttk.Scale(uncatscaleF,variable=uncatscaleF.Var)
+uncatscaleF.s.config(from_=1)
+
+
+uncatscaleF.l1 = ttk.Label(uncatscaleF,textvariable=uncatscaleF.lVar)
+uncatscaleF.x = ttk.Label(uncatscaleF,text='x')
+uncatscaleF.l2 = ttk.Label(uncatscaleF,textvariable=uncatscaleF.lVar)
+
+uncatscaleF.s.pack(side=LEFT , expand = 0, fill=X)
+uncatscaleF.l1.pack(side=LEFT , expand = 0, fill=X)
+uncatscaleF.x.pack(side=LEFT , expand = 0, fill=X)
+uncatscaleF.l2.pack(side=LEFT , expand = 0, fill=X)
+
 #--------------------------------------------------------------------------------------------#
 
 
@@ -988,7 +1029,7 @@ uncatprog.config(variable=uncatprog.Variable)
 hide(uncatprog,'pack', before = uncatscroll)
 
 #--------------------------------------------------------------------------------------------#
-guncat = Gallery(on=uncatscroll,progress=uncatprog,scale=uncatscale,scalelabel=[uncatscalelabel1,uncatscalelabel2])
+guncat = Gallery(on=uncatscroll,progress=uncatprog,scale=uncatscaleF)
 #--------------------------------------------------------------------------------------------#
 
 
@@ -1006,6 +1047,27 @@ guncat = Gallery(on=uncatscroll,progress=uncatprog,scale=uncatscale,scalelabel=[
 
 #--------------------------------------------------------------------------------------------#
 
+# paned/right frame/"train" frame/thumbnail size scale
+(g01scaleF := ttk.Frame(traintop)).pack(side=LEFT , expand = 0, fill=X, before = trainbutton)
+
+g01scaleF.Var = tk.StringVar(value='')
+g01scaleF.lVar = tk.StringVar(value='')
+
+g01scaleF.s = ttk.Scale(g01scaleF,variable=g01scaleF.Var)
+g01scaleF.s.config(from_=1)
+
+
+g01scaleF.l1 = ttk.Label(g01scaleF,textvariable=g01scaleF.lVar)
+g01scaleF.x = ttk.Label(g01scaleF,text='x')
+g01scaleF.l2 = ttk.Label(g01scaleF,textvariable=g01scaleF.lVar)
+
+g01scaleF.s.pack(side=LEFT , expand = 0, fill=X)
+g01scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
+g01scaleF.x.pack(side=LEFT , expand = 0, fill=X)
+g01scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
+
+#--------------------------------------------------------------------------------------------#
+
 #paned/right frame/top frame/frame01/train ScrollableCanvas
 (scrollfor01 := ScrollableCanvas(Top)).pack(expand = 1, fill = BOTH)
 
@@ -1019,7 +1081,7 @@ trainprog.config(variable=trainprog.Variable)
 hide(trainprog,'pack', before = scrollfor01)
 
 #--------------------------------------------------------------------------------------------#
-g01 = Gallery(on=scrollfor01,progress=trainprog)
+g01 = Gallery(on=scrollfor01,progress=trainprog,scale = g01scaleF)
 #--------------------------------------------------------------------------------------------#
 
 #paned/right frame/top frame/frame00/parent path LabelAB
@@ -1037,8 +1099,30 @@ g01 = Gallery(on=scrollfor01,progress=trainprog)
 
 #--------------------------------------------------------------------------------------------#
 
-# paned/right frame/"train" frame/actions button
+# paned/right frame/"valid" frame/actions button
 (validbutton:=ttk.Menubutton(validtop,text='Actions',menu=validmenu)).pack(side=RIGHT , expand = 0, fill=X)
+
+#--------------------------------------------------------------------------------------------#
+
+# paned/right frame/"valid" frame/thumbnail size scale
+(g02scaleF := ttk.Frame(validtop)).pack(side=LEFT , expand = 0, fill=X, before = validbutton)
+
+g02scaleF.Var = tk.StringVar(value='')
+g02scaleF.lVar = tk.StringVar(value='')
+
+g02scaleF.s = ttk.Scale(g02scaleF,variable=g02scaleF.Var)
+g02scaleF.s.config(from_=1)
+
+
+g02scaleF.l1 = ttk.Label(g02scaleF,textvariable=g02scaleF.lVar)
+g02scaleF.x = ttk.Label(g02scaleF,text='x')
+g02scaleF.l2 = ttk.Label(g02scaleF,textvariable=g02scaleF.lVar)
+
+g02scaleF.s.pack(side=LEFT , expand = 0, fill=X)
+g02scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
+g02scaleF.x.pack(side=LEFT , expand = 0, fill=X)
+g02scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
+
 
 #--------------------------------------------------------------------------------------------#
 
@@ -1054,7 +1138,7 @@ validprog.config(variable=validprog.Variable)
 hide(validprog,'pack', before = scrollfor02)
 
 #--------------------------------------------------------------------------------------------#
-g02 = Gallery(on=scrollfor02,progress=validprog)
+g02 = Gallery(on=scrollfor02,progress=validprog, scale = g02scaleF)
 #--------------------------------------------------------------------------------------------#
 
 
