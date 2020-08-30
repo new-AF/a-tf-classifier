@@ -9,7 +9,7 @@ import math
 
 import time
 import threading
-from random import randint
+import random
 
 from tkinter import filedialog
 from tkinter import messagebox
@@ -1203,57 +1203,81 @@ print(main.Labelfont.config(weight='bold'))
 #--------------------------------------------------------------------------------------------#
 
 class Allocate(tk.Toplevel):
-    def __init__(self, a , master = main): #self.a(ll) all refernces to other galleries
+    def __init__(self, all , master = main): #self.a(ll) all refernces to other galleries
         super().__init__(master = master)
         _alterToplevelClose(self)
+
+        self.all = all
         self.f = tk.Frame(self)
-        self.tracing = 0
-        self.VarC1, self.VarC2 , self.VarT1 , self.VarT2 = tk.StringVar() , tk.StringVar() , tk.StringVar() , tk.StringVar()
-        self.To = ''
-        self.g = '' # current gallery from which it's called
-        self.a = a
+
+        self.id1 = {j : g for j,g in enumerate(all) }
+        self.id2 = {g: j for j,g in self.id1.items()}
+        self.evar = {j : tk.StringVar() for j in self.id1 }
+        self.e = {j : ttk.Entry(self.f,textvariable = self.evar[j] , state = 'disabled') for j in self.id1 }
+        self.cbvar = {j : tk.IntVar(value = 0) for j in self.id1 }
+        self.cb = {j : ttk.Checkbutton(self.f, variable = self.cbvar[j] , text = f'"{g.get_labelframe_text()}"' ) for j,g in self.id1.items() }
+        [cb.config(command = lambda e=self.e[j] , myvar = self.cbvar[j] : e.config(state = ['disabled','normal'][myvar.get()]) ) for j,cb in self.cb.items()]
+
         self.f.l = ttk.Label(self.f )
+        self.f.b = ttk.Button(self.f, text = 'Allocate' , command = lambda : self.allocate())
+        self.f.cancel = ttk.Button(self.f, text = 'Cancel', command = lambda : _hideToplevel(self))
+
+         #
+        self.lenall = len(self.all)
+
         self.f.l.grid(row = 0, column = 0 , columnspan = 3 , sticky = 'nswe')
-        self.f.cb1 = ttk.Checkbutton(self.f  , variable = self.VarC1)
-        self.f.cb2 = ttk.Checkbutton(self.f ,  variable = self.VarC2 ,)
-        self.f.p1 = ttk.Entry(self.f, textvariable = self.VarT1 , state = 'disabled')
-        self.f.p2 = ttk.Entry(self.f, textvariable = self.VarT2, state = 'disabled')
-        self.f.cb1.grid(row = 1, column = 0 , sticky = 'nswe')
-        self.f.cb2.grid(row = 2, column = 0 , sticky = 'nswe')
-        self.f.p1.grid(row = 1, column = 1 , sticky = 'nswe')
-        self.f.p2.grid(row = 2, column = 1 , sticky = 'nswe')
-        self.f.pack(side = TOP , expand = 1 , fill = BOTH)
-        self.f.b = ttk.Button(self.f, text = 'Allocate')
-        self.f.b.grid(row = 3, column = 0)
-        self.f.cancel = ttk.Button(self.f, text = 'Cancel', command = self.myhide)
-        self.f.cancel.grid(row = 3, column = 1)
+        self.mygrid(init=1)
+        self.f.b.grid(row = self.lenall+1, column = 0)
+        self.f.cancel.grid(row = self.lenall+1, column = 1)
+
+        self.gto = None
+        self.gfrom = None # current gallery from which it's called
+        self.gl = ''
+
         self.f.grid_rowconfigure('all',pad=20)
+        self.f.pack(side=TOP,expand=1,fill=BOTH)
         self.resizable(0,0)
         self.title('Partition')
-        #self.f.p1.bind('<KeyPress>',self.validate)
-        self.myhide()
-    def myhide(self):
+
         _hideToplevel(self)
+
+    def mygrid(self, init = 0):
+
+        if init:
+            for cb,e , row , col in zip(self.cb.values() , self.e.values() , range(1,self.lenall+1) , [0]*self.lenall ):
+                cb.grid( row = row, column = col , sticky = 'nswe')
+                e.grid( row = row, column = col+1 , sticky = 'nswe')
+                cb.grid_remove()
+                e.grid_remove()
+
+            return
+
+        for cb,e  in zip(self.cb.values() , self.e.values() ):
+            cb.grid_remove()
+            e.grid_remove()
+        for g,j in self.gto.items():
+            self.cb[j].grid()
+            self.e[j].grid()
+
+
     def setlabel(self):
         s = 'Select percentage of images to allocate\nrandomly'
-        if self.To:
-            s = '%s from "%s" to:'%(s,self.To)
+        if self.gfrom:
+            s = '%s from "%s" to:'%(s,self.gl)
         self.f.l.config(text= s)
-        c = self.a[:]
-        c.remove(self.g)
-        for j,i in enumerate(c):
-            j1 = j+1
-            tmp = getattr(self.f,'cb%d'%j1)
-            tmp.config(text = '"{}"'.format(i.get_labelframe_text()))
-            tmp.config(command = lambda trace = getattr(self,'VarC%d'%j1), on = getattr(self.f, 'p%d'%j1) : on.config(state = ['disabled','normal'][int(trace.get())]))
+
     def myshow(self,g):
-        self.g = g
-        self.To  = g.get_labelframe_text()
-        self.title('Partition "{}"'.format(self.To))
+        self.gfrom = g
+        self.gto = {i : self.id2[i] for i in self.all if i!=g}
+        self.gl = g.get_labelframe_text()
+        self.title(f'Partition "{self.gl}"')
         self.setlabel()
+        self.mygrid()
         _showToplevel(self)
+
     def allocate(self):
-        p1,p2 = self.VarT1.get() , self.VarT2.get()
+        for g,j in self.gto.items():
+            print(f'{self.evar[j].get()=}')
 
 
 
@@ -1545,6 +1569,7 @@ class To(tk.Toplevel):
             self.g.remove_selected(to=to)
             to.use()
             _hideToplevel(self)
+
 
 main.title('A TF Classifier')
 Moveto = To([guncat,g01,g02])
