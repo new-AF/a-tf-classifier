@@ -9,6 +9,7 @@ import math
 
 import time
 import threading
+from random import randint
 
 from tkinter import filedialog
 from tkinter import messagebox
@@ -17,6 +18,8 @@ import tkinter.font
 from PIL import Image
 from PIL import ImageTk
 from PIL import ImageOps
+
+
 put = print
 for i in 'x bottom left right top y both none'.split():
     globals()[i.upper()]=i
@@ -143,13 +146,17 @@ class Gallery:
         self.lastwidth , self.lastheight , self.padx , self.pady = 1, 1, 20, 20
         self.labelW , self.labelH = self.thumbW + int(self.padx/2) , 2*main.Labelfont.metrics('linespace')
 
+        self.initx = 0
+        self.inity = 0
+        self.lastx = self.initx
+        self.lasty = self.inity
         #id s to be reused for multiple selections
         # due to Tk's memory leaking of canvas id s
-        self.unused_selected = []
-        self.used_selected = []
-
-        #selected imgs id s
-        self.selected_list = []
+        self.s_id = None
+        self.s_free = []
+        self.s_used = []
+        self.s_u = dict()
+        self.s_uu = dict()
 
         self.count=0
         self.count_selected = 0
@@ -193,50 +200,133 @@ class Gallery:
         #self.moving(e)
 
 
+    def remove_selected(self,to = None,*cs):
+        cs = cs if cs else self.get_selected_imgs()
+        new = dict(objpil=dict() , _f_id = dict() , _f_id2 = dict() )
+        cc = to.count
+        for c in cs:
+            t= 'i%d'%c
+            print(f'{c=} {cc=}')
+            new['objpil'][cc] = self.objpil.pop(c)
+            new['_f_id'][cc] = self._dict['_f_id'].pop(c)
+            new['_f_id2'][cc] = self._dict['_f_id2'].pop(c)
+            self.on.c.delete(t)
+            self.objimgtk.pop(c)
+            self.objthumb.pop(c)
+            cc += 1
+            self.count -= 1
 
+        self.deselect()
+        self.update_labelframe_text()
+        self.myfree = cs
 
-    def getcoords(self,demand):
+        if to:
+            to._sent = new
+        else:
+            return new
+
+    def use(self):
+        self.objpil.update(self._sent['objpil']) ;
+
+        #put(f'{list(self._dict.keys())=}')
+
+        self._dict['_f_id'].update(self._sent['_f_id'])
+        self._dict['_f_id2'].update(self._sent['_f_id2'])
+        count=len(self._sent['objpil'])
+        #print(f'*************************{count=}')
+        merge = zip( self.getcoords(count=count) ,self._sent['objpil'].items())
+        for yx,d in merge:
+            y,x = yx
+            c, pil = d
+            tag = 'i%d'%c
+            #print(f'{y=} {x=} {tag=}')
+            self.count += 1
+            self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
+            self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
+
+            self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
+
+            self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
+            self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
+
+            self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
+            self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
+            self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
+            #print(f'new {x=} {y=}')
+
+        self._sent.clear()
+        self.update_labelframe_text()
+
+    def getcoords(self,start=(None,None),count=None):
+        sx,sy = start
+
+        if sx is None:
+            sx=self.lastx
+            sy=self.lasty
+
+        if not count:
+            count=self.count
+
         reqx = self.imgW+self.padx
         reqy = self.imgH+self.pady
 
-        xcount = math.floor(self.on.W/reqx)
-        if not xcount:
-            xcount=1
-        ycount = math.ceil(self.count/xcount)
+        w = self.on.W
 
-        #print(f'-------- {xcount=} {ycount=}')
+        #print(f'***{sx=} {sy=} {reqx=} {reqy=}')
 
-        range1=[i*reqx for i in range(xcount)]
-        range2=range(self.count)
+        maxx = (w-sx) // reqx
+        before = sx // reqx
+        cap = w // reqx
+        #print(f'***{count=} {maxx=} {before=} {cap=}')
 
-        count = 0
-        start=0
+        if cap == 0:
+            cap = 1
 
-        if demand == 'y x count full names':
-            _count = list(self._dict['_f_id2'].keys())
-            _full = list(self._dict['_f_id2'].values())
-            _names = list(self._dict['_f_id'].values())
+        div = (before + count) // cap
+        rem = (before + count) % cap
 
-            while count < ycount:
-                yield((count*reqy),zip( range1,list(_count[start:start+xcount]),list(_full[start:start+xcount]) ,list(_names[start:start+xcount]) ))
-                start+= xcount
-                count+=1
-        elif demand == 'y x count pil_resized':
-            while count < ycount:
-                _count = list(self._dict['_f_id2'].keys())
-                yield((count*reqy),zip( range1,list(_count[start:start+xcount]), self._pil[start:start+xcount] ))
-                start+= xcount
-                count+=1
+        yc = ( div+(1*(rem != 0)) )
+        xc1 = cap - before
+
+        #print(f'***{div=} {rem = } {yc =} {xc1=}')
+
+        xlast = rem*reqx
+        ylast = div*reqy
+
+        #print(f'***{xlast=} {ylast = }')
+
+        self.lastx = xlast
+        self.lasty += ylast
+
+        x1 = list(range(0 , cap*reqx , reqx))
+        y1 = list(range(sy , sy+yc*reqy , reqy  ))
+
+        a = [ (sy , x + sx) for x in x1[: (cap - before)] ]
+        b = [ (y , x) for x in x1 for y in y1[1:] ]
+        c = [ (y , x) for x in x1 for y in y1[-1:] ]
+
+        #print(f'{y1= }\n{x1=}\n{a=}\n{b=}\n{c=}')
+
+        yield from a
+        yield from b
+        yield from c
+
 
     def resize(self):
         #prog0.config(value=0)
-        self._pil = list(map(lambda x: ImageTk.PhotoImage( x.resize((self.imgW,self.imgH)) ), list(self.objpil.values()) ))
-        for y,rest in self.getcoords('y x count pil_resized'):
-            for x,c,resized_img in rest:
-                tag = 'i%d'%c
-                self.on.c.itemconfig(tag, image = resized_img )
-                self.on.c.moveto(tag , x , y)
-                #print(f'{c=} {y=} {x=}')
+        self._pil = dict()
+        robj = map(lambda x: ImageTk.PhotoImage( x.resize((self.imgW,self.imgH)) ), self.objpil.values() )
+
+        coords = self.getcoords(start = (self.initx, self.inity) , count = self.count)
+
+        for yx,c,rimg in zip( coords , self.objpil.keys(), robj ):
+            self._pil[c] = rimg
+            y,x = yx
+            tag = 'i%d'%c
+            self.on.c.itemconfig(tag, image = rimg )
+            self.on.c.moveto(tag , x , y)
+            print(f'{c=} {y=} {x=}')
+
         self.lastwidth=self.on.W
         self.on.updatesregion()
 
@@ -257,28 +347,31 @@ class Gallery:
         show(self.progress,'pack')
 
         #print(f'~~~ {self.count} \n')
-        for y,rest in self.getcoords('y x count full names'):
-            for x,c,full,name in rest:
-                #print(f'{y=} {x=} {c=} {full=} {name=}')
-                self.objpil[c] = Image.open(full)
-                self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
-                #self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
-                self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
+        coords = self.getcoords()
+        merge = zip(coords,self._dict['_f_id2'].items(),self._dict['_f_id'].values() )
+        for yx,cp,n in merge:
+            y,x = yx
+            c,p = cp
+            #print(f'{y=} {x=} {c=} {n[:11]=}')
+            self.objpil[c] = Image.open(p)
+            self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
+            #self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
+            self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
 
-                tag = 'i%d'%c
-                self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
+            tag = 'i%d'%c
+            self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
 
-                self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
-                self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
+            self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
+            self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
 
-                self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
-                self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
-                self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
+            self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
+            self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
+            self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
 
 
-                #print(f'{c=} {y=} {x=}')
+            #print(f'{c=} {y=} {x=}')
 
-                self.progress.step()
+            self.progress.step()
 
         self.run = 1
         hide(self.progress,'pack')
@@ -287,65 +380,78 @@ class Gallery:
         self.on.updatesregion()
 
         self.image_w,self.image_h = self.objpil[0].size
-
         self.preview_init()
         self.Scale.Var.set(self.thumbW)
         self.scale_command(self.thumbW)
         self.Scale.s.config(to = self.image_w)
         show(self.Scale,'pack')
         self.update_labelframe_text()
+        #print('\nEND\n')
 
-    def update_labelframe_text(self):
+    def update_labelframe_text(self, u=1):
         parent = self.on.master
         old = parent.cget('text').split()
-        old = old[:2] + ['| %d selected item(s)'%self.count_selected]
+        if '|' in old:
+            old.pop(0)
+
+        old = ['%d'%self.count] + old[:2] + ['| %d selected item(s)'%self.count_selected]
         #print(f'{old = }')
         parent.config(text = ' '.join(old))
-        #
+        if u:
+            self.on.updatesregion()
+
+    def get_labelframe_text(self):
+        parent = self.on.master
+        old = parent.cget('text').split()
+        if '|' in old:
+            old.pop(0)
+
+        old = old[:2]
+        old = ' '.join(old)
+        return old
 
     def select(self,e):
+        main.update()
+        #print(f'{SHIFT_ON=} {self.s_used=} {self.s_free=} {self.s_id=} {self.s_u=}')
         if not SHIFT_ON:
             self.deselect()
+        #
+        iall = e.widget.find_withtag("current")
+        tall = [self.on.c.gettags(i) for i in iall]
+        s = [i for i,t in zip(iall,tall) if 'select' in t]
+        img = [t[0] for i,t in zip(iall,tall) if i not in s][0]
 
-        self.selected=e.widget.find_withtag("current")[0] #id
-        self.sTag = int(self.on.c.gettags(self.selected)[0][1:]) #tag
-        self.selected_list.append(self.sTag)
-        ix , iy = self.on.c.coords(self.selected)
 
-        if (not self.unused_selected) or SHIFT_ON:
-            self.unused_selected.append( id:=self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill =BLUE,outline='', stipple = 'gray50',tag='select',width = 0) )
-            self.on.c.tag_bind(id,'<Double-ButtonPress>',self.view_show)
+        #print(f'{iall=} {tall=} {s=} {img=}')
+        if not self.s_free:
+            self.s_id = self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill = BLUE,outline='', stipple = 'gray50',tag='select',width = 0, state = 'normal')
+            self.on.c.tag_bind(self.s_id,'<Double-ButtonPress>',self.view_show)
+            self.s_free.append(self.s_id)
 
-        id = self.unused_selected.pop(-1)
-        self.used_selected.append(id)
+        self.s_id = self.s_free.pop(-1)
+        self.s_used.append(self.s_id)
+        self.s_u[self.s_id]=img
+        self.s_uu[self.s_id]=int(img[1:])
 
+
+        x , y = self.on.c.coords(img)
+        self.on.c.coords(self.s_id , [ x , y , x+self.imgW , y+self.imgH ] )
         self.on.c.itemconfig(id,state='normal')
-        x , y , w , h = self.on.c.coords(id)
 
-        self.on.c.coords(id , [ ix , iy , ix+self.imgW , iy+self.imgH ] )
-        #print(f'{e.widget=} {e.widget.find_withtag("current")=}')
-
-
-        if SHIFT_ON:
-            self.count_selected += 1
-        else:
-            self.count_selected = 1
-
+        self.count_selected = len(self.s_used)
         self.update_labelframe_text()
 
     def deselect(self):
-        for i in self.used_selected:
-            self.on.c.itemconfig(i,state='hidden')
-
-        self.unused_selected = self.used_selected[:]
-        self.used_selected[:] = []
-
-        self.selected = None
-        self.sTag = None
-        self.selected_list[:] = []
+        for s in self.s_used:
+            self.on.c.itemconfig(s,state='hidden')
+            self.s_u[s]=None
+        self.s_used.clear()
+        self.s_id = None
         self.count_selected = 0
-
         self.update_labelframe_text()
+
+    def get_selected_imgs(self):
+        return [self.s_uu[s] for s in self.s_used]
 
     def scale_start(self,e):
         self.Scale.start = 1
@@ -369,7 +475,7 @@ class Gallery:
         self.imgW = val
         self.imgH = val
         self.resize()
-
+        self.preview_small_resize()
 
     def scale_hide(do = 1):
         pass
@@ -402,6 +508,14 @@ class Gallery:
         self.Preview_yPlace = Tree.winfo_rooty() - main.winfo_rooty()
         self.Preview.place(x = 0 , y = self.Preview_yPlace , width = 0 , height = 0)
 
+    def preview_small_resize(self):
+        ratio = self.Preview_ratio = math.ceil(self.image_w / self.imgW)
+        #put(f'{ratio}')
+        self.Preview_ratioDiv2 = self.Preview_ratio / 2
+
+
+        #x , y  , _ , _ = self.on.c.coords()
+        self.on.c.coords('small',[0,0,ratio,0,ratio,ratio,0,ratio,0,0])
     def preview_enter(self,e):
 
         i = self.on.c.find_withtag('current')[0]
@@ -466,12 +580,12 @@ class Gallery:
         self.Preview.c.yview_moveto(fy)
 
     def view_show(self, e):
-        #print(f'+++{self.selected_list=}')
+        #print(f'+++{self.s_list=}')
         View.lo = 0
-        View.at = len(self.selected_list)-1
+        View.at = len(self.s_used)-1
         View.hi = View.at
-        cs =  self.selected_list # instead of [int(i[1:]) for i in
 
+        cs=self.get_selected_imgs()
         View.titles = [ self._dict['_f_id'][c] for c in cs]
         View.img0_list = [self.objpil[c] for c in cs]
         View.img = View.img0_list[View.at]
@@ -1052,9 +1166,15 @@ def View_zoomOnClick(sign):
     View_setImg()
 
 def Shift_start(e):
+    if not e.keysym.lower().startswith('shift'):
+        return
     global SHIFT_ON
     SHIFT_ON = 1
+    #print(f'+++{e.keysym=} {SHIFT_ON=}')
+
 def Shift_end(e):
+    if not e.keysym.lower().startswith('shift'):
+        return
     global SHIFT_ON
     SHIFT_ON = 0
 
@@ -1063,8 +1183,8 @@ View_tbar_full['command'] = View_fullOnClick
 
 #--------------------------------------------------------------------------------------------#
 # bind Shift key
-main.bind('<Shift-KeyPress>',Shift_start)
-main.bind('<Shift-KeyRelease>',Shift_end)
+main.bind('<KeyPress>',Shift_start)
+main.bind('<KeyRelease>',Shift_end)
 #--------------------------------------------------------------------------------------------#
 
 # paned/right frame/class banner frame/
@@ -1082,12 +1202,66 @@ main.Labelfont = tkinter.font.Font(font=banner.cget('font'))
 print(main.Labelfont.config(weight='bold'))
 #--------------------------------------------------------------------------------------------#
 
+class Allocate(tk.Toplevel):
+    def __init__(self, a , master = main): #self.a(ll) all refernces to other galleries
+        super().__init__(master = master)
+        _alterToplevelClose(self)
+        self.f = tk.Frame(self)
+        self.tracing = 0
+        self.VarC1, self.VarC2 , self.VarT1 , self.VarT2 = tk.StringVar() , tk.StringVar() , tk.StringVar() , tk.StringVar()
+        self.To = ''
+        self.g = '' # current gallery from which it's called
+        self.a = a
+        self.f.l = ttk.Label(self.f )
+        self.f.l.grid(row = 0, column = 0 , columnspan = 3 , sticky = 'nswe')
+        self.f.cb1 = ttk.Checkbutton(self.f  , variable = self.VarC1)
+        self.f.cb2 = ttk.Checkbutton(self.f ,  variable = self.VarC2 ,)
+        self.f.p1 = ttk.Entry(self.f, textvariable = self.VarT1 , state = 'disabled')
+        self.f.p2 = ttk.Entry(self.f, textvariable = self.VarT2, state = 'disabled')
+        self.f.cb1.grid(row = 1, column = 0 , sticky = 'nswe')
+        self.f.cb2.grid(row = 2, column = 0 , sticky = 'nswe')
+        self.f.p1.grid(row = 1, column = 1 , sticky = 'nswe')
+        self.f.p2.grid(row = 2, column = 1 , sticky = 'nswe')
+        self.f.pack(side = TOP , expand = 1 , fill = BOTH)
+        self.f.b = ttk.Button(self.f, text = 'Allocate')
+        self.f.b.grid(row = 3, column = 0)
+        self.f.cancel = ttk.Button(self.f, text = 'Cancel', command = self.myhide)
+        self.f.cancel.grid(row = 3, column = 1)
+        self.f.grid_rowconfigure('all',pad=20)
+        self.resizable(0,0)
+        self.title('Partition')
+        #self.f.p1.bind('<KeyPress>',self.validate)
+        self.myhide()
+    def myhide(self):
+        _hideToplevel(self)
+    def setlabel(self):
+        s = 'Select percentage of images to allocate\nrandomly'
+        if self.To:
+            s = '%s from "%s" to:'%(s,self.To)
+        self.f.l.config(text= s)
+        c = self.a[:]
+        c.remove(self.g)
+        for j,i in enumerate(c):
+            j1 = j+1
+            tmp = getattr(self.f,'cb%d'%j1)
+            tmp.config(text = '"{}"'.format(i.get_labelframe_text()))
+            tmp.config(command = lambda trace = getattr(self,'VarC%d'%j1), on = getattr(self.f, 'p%d'%j1) : on.config(state = ['disabled','normal'][int(trace.get())]))
+    def myshow(self,g):
+        self.g = g
+        self.To  = g.get_labelframe_text()
+        self.title('Partition "{}"'.format(self.To))
+        self.setlabel()
+        _showToplevel(self)
+    def allocate(self):
+        p1,p2 = self.VarT1.get() , self.VarT2.get()
+
+
 
 #paned/right frame/second paned window/"uncategorized" frame/
 (All:=ttk.LabelFrame(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.3)
 
 
-#--------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------------------------------------------#
 
 # /"uncategized", actions menu
 uncatmenu=tk.Menu(main,tearoff=0)
@@ -1102,9 +1276,24 @@ uncatmenu.add_separator()
 trainmenu.add_separator()
 validmenu.add_separator()
 
-uncatmenu.add_checkbutton(label='Unselect', command=lambda : guncat.deselect())
+uncatmenu_sel = tk.Menu(uncatmenu, tearoff=0)
+uncatmenu_sel.add_checkbutton(label='Unselect', command=lambda : guncat.deselect())
+uncatmenu_sel.add_separator()
+uncatmenu_sel.add_command(label='Move to', command = lambda: Moveto.show(guncat))
+
+uncatmenu.add_cascade(label='Selection',menu = uncatmenu_sel)
 trainmenu.add_checkbutton(label='Unselect', command=lambda : g01.deselect())
 validmenu.add_checkbutton(label='Unselect', command=lambda : g02.pressed())
+
+uncatmenu.add_separator()
+trainmenu.add_separator()
+validmenu.add_separator()
+
+uncatmenu.add_command(label='Partition this set', command=lambda : Main_allocate.myshow(guncat))
+#trainmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Top))
+#validmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Bottom))
+
+
 
 
 #--------------------------------------------------------------------------------------------#
@@ -1274,14 +1463,91 @@ g02 = Gallery(on=scrollfor02,progress=validprog, scale = g02scaleF)
 #chosen path assesor
 Tpath=Path(tree=tree,gallery=[guncat,g01,g02])
 
+Main_allocate = Allocate([guncat,g01,g02])
+
+"""Tpath.mytop = tk.Toplevel(main)
+
+Tpath.myf = ttk.Frame(Tpath.mytop)
+Tpath.myf.pack(side = TOP, expand = 1, fill = BOTH)
+Tpath.myf.topl = ttk.Label(Tpath.myf, text = 'Please Choose the directory structure of the image dataset' , anchor = 'center')
+Tpath.myf.topl.grid(row = 0, column = 0, columnspan = 3, sticky = 'nswe')
+
+
+Tpath.myf.sc = ScrollableCanvas(Tpath.myf)
+
+Tpath.myf.sc.img1 = ImageTk.PhotoImage(file = 'diagram 1.png')
+Tpath.myf.sc.img2 = ImageTk.PhotoImage(file = 'diagram 2.png')
+Tpath.myf.sc.Var = tk.StringVar()
+Tpath.myf.sc.cb1 = ttk.Radiobutton(Tpath.myf.sc.c, value = 0, variable = Tpath.myf.sc.Var , text = 'Stnadard\nPartioning' , image = Tpath.myf.sc.img1 , compound = RIGHT)
+Tpath.myf.sc.cb2 = ttk.Radiobutton(Tpath.myf.sc.c, value = 1, variable = Tpath.myf.sc.Var , text = '"Misplaced"\nPartioning' , image = Tpath.myf.sc.img2 , compound = RIGHT)
+Tpath.myf.sc.c.create_window(0,0, window = Tpath.myf.sc.cb1 , height = 981)
+Tpath.myf.sc.c.create_window(555,0, window = Tpath.myf.sc.cb2 , height = 981)
+Tpath.myf.sc.grid(row = 1, column = 0 , columnspan = 3 , sticky = 'nswe')
+Tpath.myf.b1 = ttk.Button(Tpath.myf, text = 'Proceed')
+Tpath.myf.b1.grid(row = 2 , column = 0 , sticky = 'nswe')
+Tpath.myf.b2 = ttk.Button(Tpath.myf, text = 'Cancel')
+Tpath.myf.b2.grid(row = 2 , column = 2 , sticky = 'nswe')
+Tpath.myf.grid_columnconfigure([0,2] , uniform = 1 , weight = 1)
+Tpath.myf.grid_rowconfigure(1 , uniform = 1 , weight = 1)
+Tpath.myf.sc.bind('<Configure>',lambda e: e.widget.c.config(scrollregion = e.widget.c.bbox('all') ))"""
 #--------------------------------------------------------------------------------------------#
 
 coll = Collapse('place',All,Top,Bottom)
 expandvar = {i:tk.IntVar() for i in [uncatmenu,trainmenu,validmenu]}
 [i.entryconfig(0,variable=v) for i,v in expandvar.items()]
 
-main.title('A TF Classifier')
+class To(tk.Toplevel):
+    def __init__(self,a,parent=main):
+        super().__init__(master=parent)
+        self.g=None
+        self.f = ttk.Frame(self)
+        self.myvar=tk.IntVar()
+        self.ka = {i:ttk.Radiobutton(self.f,value = j+1, variable = self.myvar , text=i.get_labelframe_text()) for j,i in enumerate(a)}
+        self.ka2 = {i+1: g for i,g in enumerate(a)}
+        #self.ka2 = {i: rb for enumerate(list(self.ka.values()))}
+        #self.resizable(0,0)
+        _alterToplevelClose(self)
+        _hideToplevel(self)
+        self.f.pack(side=TOP,expand=1,fill=BOTH)
+        self.init()
+    def init(self):
+        self.f.l = ttk.Label(self.f,text='Move x selected item(s) to')
+        self.f.l.grid(row=0 , column = 0 , columnspan = 2)
 
+        count=1
+        for g,rb in self.ka.items():
+            rb.grid(row = count,column = 0,sticky='nswe' )
+            count+=1
+        self.f.grid_columnconfigure([0,1],weight=1,uniform=1)
+
+        self.f.b = ttk.Button(self.f , text = 'Move', command = lambda : self.move())
+        self.f.cancel = ttk.Button(self.f , text = 'Cancel',command= lambda: _hideToplevel(self))
+
+        self.f.b.grid(row = count , column = 0)
+        self.f.cancel.grid(row = count , column = 1)
+        self.f.grid_rowconfigure('all',pad=20)
+
+    def show(self,sentg):
+        self.g=sentg
+        if not sentg.s_used:
+            return
+        for g,rb in self.ka.items():
+            if sentg ==g:
+                rb.grid_remove()
+            else:
+                rb.grid()
+        self.f.l['text']=self.f.l['text'].replace('x',f'{sentg.count_selected}')
+        _showToplevel(self)
+
+    def move(self):
+        if (v:= self.myvar.get()):
+            to = self.ka2[v]
+            self.g.remove_selected(to=to)
+            to.use()
+            _hideToplevel(self)
+
+main.title('A TF Classifier')
+Moveto = To([guncat,g01,g02])
 #main.wm_attributes('-top',1)
 
 _center(main,500,500)
