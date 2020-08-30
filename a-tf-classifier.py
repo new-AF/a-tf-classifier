@@ -872,6 +872,20 @@ def _getParentDir():
 
 # root window
 main = tk.Tk()
+
+# main frame
+zero=ttk.Frame(main)
+
+# main frame / up
+zeroup = ttk.Labelframe(zero,text='',labelanchor='n')
+
+# main frame / down
+zerodo = ttk.Frame(zero)
+
+zero.pack(side=TOP,expand=1,fill=BOTH)
+zeroup.pack(side=TOP,fill=X,padx=5)
+zerodo.pack(side=BOTTOM,expand=1,fill=BOTH,padx=5)
+
 main.font = None
 
 # popup
@@ -964,8 +978,100 @@ def ifcollapse(menu,chindex,parent,geom):
 
 #--------------------------------------------------------------------------------------------#
 
-# main frame
-(frame0 := ttk.LabelFrame(main, text = 'Zero')).pack(expand = 1 , fill = BOTH)
+# dataser main frame
+(frame0 := ttk.LabelFrame(zerodo, text = 'Zero')).grid(row = 0 , column = 0,sticky='nswe')
+(frame1 := ttk.LabelFrame(zerodo, text = 'One')).grid(row = 0 , column = 1,sticky='nswe')
+frame1.grid_remove()
+#--------------------------------------------------------------------------------------------#
+#           Emulating Tabs/Sections within the ui
+class Slide(ttk.Frame):
+    def __init__(self,parent,all=[],**kw):
+        sel = kw.pop('sel',0)
+        super().__init__(master=parent,**kw)
+
+
+        self.defcur = main.cget('cursor')
+        self.count=0
+        self.jactive=None
+        self.active=None
+        self.px = Image.new('RGBA',(1,1),(255,255,255,255))
+
+        self.bg0 = ''
+        self.bg1 = 'black'
+        self.mybg = [self.bg0,self.bg1]
+
+        self.under = dict()
+        self.ff = dict()
+        self.id1 = dict()
+        self.id2 = dict()
+
+
+        for i in all:
+            self.myadd(i)
+        self.sel(j=sel)
+
+    def mygrid(self,*cs):
+
+        for j in cs:
+
+            l,ll = self.id1[j] , self.under[j]
+            l.grid(row=0,column=j,sticky='we')
+            ll.grid(row=1,column=j,sticky='we')
+
+
+    def myadd(self,tup,append=1):
+
+        count = self.count
+
+        ff , text = tup
+        l = tk.Label(self,text=text,anchor='center')
+
+        if count == 0:
+            self.bg0 = self.mybg[0] = l.cget('bg')
+
+        self.under[self.count] = ll = tk.Label(self,text=' ',bg = self.bg0, height = 1,anchor='center' )
+        self.under[self.count].img = ImageTk.PhotoImage(image=self.px)
+        ll['image'] = ll.img
+
+        self.ff[count] = ff
+        self.id1[count] = l
+        self.id2[l] = count
+        self.under[count] = ll
+
+        self.mygrid(count)
+        self.count+= 1
+
+        self.grid_rowconfigure(0,weight = 0, uniform = 0)
+        self.grid_rowconfigure(1,weight = 0, uniform = 1)
+
+        self.other_state(count)
+
+        return l
+
+    def other_state(self,j):
+        l,ll,ff =self.id1[j] , self.under[j], self.ff[j]
+        st,bn,cu = [('disabled','',self.defcur),('normal',self.sel,'hand2')][getattr(ff,'Slide_state',0)]
+        l.config(state = st , cursor = cu)
+        ll.config(state = st)
+        l.bind('<Button>',bn)
+
+    def sel(self,e=None, j=None):
+        j = self.id2[e.widget] if e is not None else j
+        ll = self.under[j]
+
+        self.active = self.id1[j]
+        self.jactive = j
+        for l,ff in zip(self.under.values(),self.ff.values()):
+            l['bg']=self.bg0
+            ff.grid_remove()
+
+        ll['bg']=self.bg1
+        self.ff[j].grid()
+        #call = [tk.Grid.grid_remove, tk.Grid.grid][state]
+        #call(self.ff[j])
+
+
+
 
 #--------------------------------------------------------------------------------------------#
 
@@ -1573,6 +1679,15 @@ class To(tk.Toplevel):
 
 main.title('A TF Classifier')
 Moveto = To([guncat,g01,g02])
+zerodo.grid_columnconfigure('all',weight=1,uniform='default')
+zerodo.grid_rowconfigure('all',weight=1,uniform='default')
+
+frame0.Slide_state=1
+frame1.Slide_state=1
+
+switch = Slide(zeroup,[(frame0,'Configure Dataset'),(frame1,'Build Model')],sel=0)
+switch.pack(side=TOP,expand=0,fill=NONE)
+
 #main.wm_attributes('-top',1)
 
 _center(main,500,500)
