@@ -20,6 +20,14 @@ from PIL import ImageTk
 from PIL import ImageOps
 
 
+# up chevron icon
+# Font Awesome by Dave Gandy - https://fortawesome.github.com/Font-Awesome
+UP = Image.open('up.png').resize((20,20))
+
+# down chevron icon
+# Font Awesome by Dave Gandy - https://fortawesome.github.com/Font-Awesome
+DO = Image.open('down.png').resize((20,20))
+
 put = print
 for i in 'x bottom left right top y both none'.split():
     globals()[i.upper()]=i
@@ -1072,39 +1080,126 @@ class Slide(ttk.Frame):
         #call = [tk.Grid.grid_remove, tk.Grid.grid][state]
         #call(self.ff[j])
 
-class Slot(tk.Frame):
+
+class Updown(tk.Frame):
     def __init__(self,parent,**kw):
+        self.bannertext = kw.pop('banner_text','Banner')
         super().__init__(master=parent,**kw)
+        
+        self.mystate = 1
+        self.fmain = tk.Frame(self,bg=GREEN,bd=10)
+        self.pconfig = None
+        
+        self.line1 = ttk.Separator(self.fmain,orient = 'horizontal')
+        self.line2 = ttk.Separator(self.fmain,orient = 'horizontal')
+        self.lhead = ttk.Label(self,text = self.bannertext, anchor = 'center', cursor='hand2')
+        self.lhead.imgup = ImageTk.PhotoImage(image = UP)
+        self.lhead.imgdo = ImageTk.PhotoImage(image = DO)
+        self.lhead['image'] = self.lhead.imgup
+        self.lhead['compound'] = 'left'
+        
+        self.line1.pack(side=TOP,expand=0,fill=X)
+        self.lhead.pack(side=TOP,expand=0,fill=X)
+        self.line2.pack(side=TOP,expand=0,fill=X)
+        self.fmain.pack(side=TOP,expand=1,fill=BOTH)
+        
+        self.pconfig = self.fmain.pack_info()
+        self.pconfig['after']=self.line2
+        
+        self.lhead.bind('<ButtonPress>',self.bclicked)
+    
+    def bclicked(self,e):
+        self.mystate = not self.mystate
+        call=['_forget',''][self.mystate]
+        call = getattr(tk.Pack, f'pack{call}')
+        
+        self.lhead['image']=[self.lhead.imgdo,self.lhead.imgup][self.mystate]
+        call(self.fmain)
+
+class Slot(tk.Frame):
+    def __init__(self,parent,type,**kw):
+        super().__init__(master=parent,**kw)
+        self.mytype = type
         self.parent = parent
         if 'Slot_count' not in vars(self.parent):
             self.parent.Slot_count = 0
             self.parent.Slot_d = dict()
-        
+
         self.fmain = tk.Frame(self,bg = BLUE)
         #ON PARENT
         self.pack(side=TOP,expand=0,fill=X)
-        
+
         self.addbanner()
+        self.init_fmain()
 
     def addbanner(self):
         if ('banner') in vars(self):
             return
         self.banner = tk.Frame(self,relief='raised',bg=BLUE,bd=2)
-        self.banner.pack(side=TOP,expand=0,fill=X)
-        
         self.banner.mact = tk.Menu(self.banner,tearoff=0)
+        self.banner.mact.add_command(label='Rename', command = self.banner_txt_show)
         self.banner.mb = ttk.Menubutton(self.banner,text = 'Action' ,menu = self.banner.mact)
-        
-        self.banner.mb.pack(side=RIGHT,expand=0)
 
-        
+        self.banner.before_txt = ttk.Label(self.banner, text = 'Model Name:')
+        self.banner.before_ltype = ttk.Label(self.banner, text = 'Model Type:')
+        self.banner.txt = tk.Entry(self.banner,relief='solid')
+        self.banner.ltype = ttk.Label(self.banner, text = self.mytype)
+        self.banner.ltxt = ttk.Label(self.banner, text = '')
+
+        self.banner.mb.grid(row=0,rowspan = 2, column = 2, sticky='nswe')
+        self.banner.before_txt.grid(row=0,rowspan = 1, column = 0, sticky='nswe')
+        self.banner.txt.grid(row=0,rowspan = 1, column = 1, sticky='nswe')
+        self.banner.before_ltype.grid(row=1,rowspan = 1, column = 0, sticky='nswe')
+        self.banner.ltype.grid(row=1,rowspan = 1, column = 1, sticky='nswe')
+
+        self.banner.grid_columnconfigure(1,weight = 1 ,uniform = 1,pad = 100)
+        self.banner.grid_columnconfigure([0,2],weight = 0 ,uniform = 0)
+        self.banner.pack(side=TOP,expand=0,fill=X)
+
+        self.banner.txt.bind('<KeyPress-Return>',self.banner_txt_ret)
+        self.banner.txt.focus()
+
+    def banner_txt_ret(self,e):
+        self.banner.ltxt['text'] = e.widget.get()
+        c = e.widget.grid_info()
+        e.widget.grid_remove()
+        self.banner.ltxt.grid(**c)
+        self.banner.ltxt.myset = 1
+
+    def banner_txt_show(self):
+        if 'myset' not in vars(self.banner.ltxt):
+            return
+        self.banner.ltxt.grid_remove()
+        self.banner.txt.grid()
+
+    def init_fmain(self):
+
+        self.fmain = tk.Frame(self)
+        self.fmain.pack(side=BOTTOM,expand=1,fill=BOTH)
+
+        self.init_details()
+        self.init_sum()
+
+    def init_details(self):
+
+        self.fmain.fdetails = Updown(self.fmain,banner_text='Model Details',bg=GREEN,bd=10)
+
+        self.fmain.fdetails.pack(side=TOP,expand=1,fill=BOTH)
+
+    def init_sum(self):
+
+        self.fmain.fsummary = Updown(self.fmain,banner_text='Model Summary',bg=BLACK,bd=10)
+
+        self.fmain.fsummary.pack(side=TOP,expand=1,fill=BOTH)
+
+
 #--------------------------------------------------------------------------------------------#
 
 # models main frame
 frame1.fmain = ttk.LabelFrame                       (frame1, text = 'f1main')
 frame1.fmain.fup = ttk.LabelFrame                   (frame1.fmain, text = '11')
 frame1.fmain.fup.madd=tk.Menu                    (frame1.fmain.fup,tearoff=0)
-frame1.fmain.fup.madd.add_command                   (label='Keras Sequential',command = lambda : Slot(frame1.scmain.fplace.fmain))
+frame1.fmain.fup.madd.add_command                   (label='Keras Sequential',command = lambda : Slot(frame1.scmain.fplace.fmain,'Keras Sequential'))
 frame1.fmain.fup.badd = ttk.Menubutton              (frame1.fmain.fup,text='Add',menu=frame1.fmain.fup.madd)
 
 
