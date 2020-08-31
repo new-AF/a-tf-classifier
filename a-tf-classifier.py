@@ -978,10 +978,10 @@ def ifcollapse(menu,chindex,parent,geom):
 
 #--------------------------------------------------------------------------------------------#
 
-# dataser main frame
-(frame0 := ttk.LabelFrame(zerodo, text = 'Zero')).grid(row = 0 , column = 0,sticky='nswe')
-(frame1 := ttk.LabelFrame(zerodo, text = 'One')).grid(row = 0 , column = 1,sticky='nswe')
-frame1.grid_remove()
+# dataset main frame
+(frame0 := ttk.LabelFrame(zerodo, text = 'Zero')).pack(side=TOP,expand=1,fill=BOTH)
+(frame1 := ttk.LabelFrame(zerodo, text = 'One')).pack(side=TOP,expand=1,fill=BOTH)
+#frame1.grid_remove()
 #--------------------------------------------------------------------------------------------#
 #           Emulating Tabs/Sections within the ui
 class Slide(ttk.Frame):
@@ -1063,16 +1063,69 @@ class Slide(ttk.Frame):
         self.jactive = j
         for l,ff in zip(self.under.values(),self.ff.values()):
             l['bg']=self.bg0
-            ff.grid_remove()
+            #ff.grid_remove()
+            ff.pack_forget()
 
         ll['bg']=self.bg1
-        self.ff[j].grid()
+        #self.ff[j].grid()
+        self.ff[j].pack(side=TOP,expand=1,fill=BOTH)
         #call = [tk.Grid.grid_remove, tk.Grid.grid][state]
         #call(self.ff[j])
 
+class Slot(tk.Frame):
+    def __init__(self,parent,**kw):
+        super().__init__(master=parent,**kw)
+        self.parent = parent
+        if 'Slot_count' not in vars(self.parent):
+            self.parent.Slot_count = 0
+            self.parent.Slot_d = dict()
+        
+        self.fmain = tk.Frame(self,bg = BLUE)
+        #ON PARENT
+        self.pack(side=TOP,expand=0,fill=X)
+        
+        self.addbanner()
+
+    def addbanner(self):
+        if ('banner') in vars(self):
+            return
+        self.banner = tk.Frame(self,relief='raised',bg=BLUE,bd=2)
+        self.banner.pack(side=TOP,expand=0,fill=X)
+        
+        self.banner.mact = tk.Menu(self.banner,tearoff=0)
+        self.banner.mb = ttk.Menubutton(self.banner,text = 'Action' ,menu = self.banner.mact)
+        
+        self.banner.mb.pack(side=RIGHT,expand=0)
+
+        
+#--------------------------------------------------------------------------------------------#
+
+# models main frame
+frame1.fmain = ttk.LabelFrame                       (frame1, text = 'f1main')
+frame1.fmain.fup = ttk.LabelFrame                   (frame1.fmain, text = '11')
+frame1.fmain.fup.madd=tk.Menu                    (frame1.fmain.fup,tearoff=0)
+frame1.fmain.fup.madd.add_command                   (label='Keras Sequential',command = lambda : Slot(frame1.scmain.fplace.fmain))
+frame1.fmain.fup.badd = ttk.Menubutton              (frame1.fmain.fup,text='Add',menu=frame1.fmain.fup.madd)
 
 
 
+frame1.fmain.pack(side=TOP,expand=1,fill=BOTH)
+frame1.fmain.fup.pack(side=TOP,expand=0,fill=X)
+frame1.fmain.fup.badd.pack(side=RIGHT,expand=0,fill=NONE)
+
+
+frame1.scmain = ScrollableCanvas                    (frame1.fmain)
+frame1.scmain.fplace = ttk.Frame                    (frame1.scmain)
+frame1.scmain.fplace.fmain = tk.Frame               (frame1.scmain.fplace) #,bg=RED
+
+frame1.scmain.pack(side=TOP,expand=1,fill=BOTH)
+frame1.scmain.c.create_window(0,0,window=frame1.scmain.fplace, tag = 'fplace')
+frame1.scmain.fplace.place(relx = 0, rely=0, relwidth = 1, relheight = 1)
+
+frame1.scmain.fplace.fmain.pack(side=TOP,expand=1,fill=BOTH)
+
+
+#frame1.scmain.c.bind('<Configure>',lambda e: e.widget.itemconfig( 'fplace', width = e.width , height = e.height))
 #--------------------------------------------------------------------------------------------#
 
 #/frame0/exe entry
@@ -1679,8 +1732,9 @@ class To(tk.Toplevel):
 
 main.title('A TF Classifier')
 Moveto = To([guncat,g01,g02])
-zerodo.grid_columnconfigure('all',weight=1,uniform='default')
-zerodo.grid_rowconfigure('all',weight=1,uniform='default')
+
+#zerodo.grid_columnconfigure('all',weight=1,uniform='default')
+#zerodo.grid_rowconfigure('all',weight=1,uniform='default')
 
 frame0.Slide_state=1
 frame1.Slide_state=1
