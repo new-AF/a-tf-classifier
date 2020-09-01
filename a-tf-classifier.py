@@ -75,7 +75,6 @@ class ScrollableCanvas(tk.Frame):
     def __init__(self,master, **kwargs):
 
         super().__init__(master, **kwargs)
-        #tk.Frame.__init__(self,master,kwargs)
         self.parent=master
         self.attr=dict()
 
@@ -1108,6 +1107,7 @@ class Updown(ttk.Labelframe):
         self.lhead.L = tk.Label(self.lhead,text = self.bannertext, anchor = 'center', cursor='hand2',bg='red')
         self.lhead.I = tk.Label(self.lhead, cursor='hand2')
         self.lhead.L.bind('<ButtonPress>',self.collpase)
+        self.lhead.I.bind('<ButtonPress>',self.collpase)
         self.lhead.L.pack(side=LEFT,expand=1,fill=X)
         self.lhead.I.pack(side=RIGHT,expand=0)
         self.lhead.I.up = ImageTk.PhotoImage(image = UP)
@@ -1124,12 +1124,16 @@ class Updown(ttk.Labelframe):
         self.line6.grid(row=0,column=3,rowspan=5,sticky='ns')
 
         self.grid_rowconfigure(0,weight=1,uniform=1)
+        self.grid_rowconfigure(1,weight=0,uniform='00')
+        self.grid_rowconfigure(2,weight=0,uniform='000')
         self.grid_columnconfigure(1,weight=1,uniform=0)
         self.grid_columnconfigure([0,3],weight=0,uniform='03')
 
+    def set_mainframe(self):
+        return tk.LabelFrame(self,text=f'main {self.main_count}',width=40,height=50)
     def add_main(self):
 
-        f = tk.LabelFrame(self,text=f'main {self.main_count}',width=50,height=50)
+        f = self.set_mainframe()
         f.grid(row = self.last_row - 1,column=1,columnspan=2,sticky='swe')
         self.line4.grid(row=self.last_row)
         self.main[self.main_count] = f
@@ -1144,58 +1148,92 @@ class Updown(ttk.Labelframe):
         for f in self.main.values():
             call(f)
 
+class XUpdown(Updown):
+    def __init__(self,parent,**kw):
+        self.count = kw.pop('count',1)
+        #self.lwidth = kw.pop('lwidth')
+        super().__init__(parent,**kw)
+        self.x = '\u274c'
+        self.lhead.bind('<ButtonPress>','')
+        self.lhead.L.config(cursor=main.cget('cursor'),anchor='w')
+        self.lhead.I.config(image = '', text = self.x)
+        self.lhead.I.bind('<ButtonPress>',self.delete)
+        self.lhead.Count = ttk.Label(self.lhead,text = self.count)
+        self.lhead.V1 = ttk.Separator(self.lhead, orient = 'vertical')
+        self.lhead.V2 = ttk.Separator(self.lhead, orient = 'vertical')
 
+        self.lhead.Count.pack(side=LEFT , before = self.lhead.L)
+        self.lhead.V1.pack(side=LEFT,fill=Y , before = self.lhead.L)
+        self.lhead.V2.pack(side=RIGHT,fill=Y , after = self.lhead.L)
 
+        self.line3.grid_remove()
 
+    def delete(self,e):
+        self.destroy()
 
 class Slot(tk.Frame):
     def __init__(self,parent,type,**kw):
         super().__init__(parent,**kw)
-        self['relief'] = 'raised'
-        self['bd'] = 10
+        self.config(bg=RED , relief = 'raised' , bd = 10)
         self.var_col = tk.IntVar(value=1)
         self.mytype = type
-        self.parent = parent
-        if 'Slot_count' not in vars(self.parent):
-            self.parent.Slot_count = 0
-            self.parent.Slot_d = dict()
 
         #PACK AUTOMATICALLY ON PARENT
         self.pack(side=TOP,fill=X)
 
+
+        self.sbv = tk.Scrollbar(self)
+        self.c = tk.Canvas(self,bg=BLUE)
+        self.cf = tk.Frame(self.c)
+        self.c.create_window(0,0,window=self.cf,tag='cf')
+        self.c.bind('<Visibility>',self.xmap) ; self.xmapped = 1
+        self.c.bind('<Configure>',self.xconfig)
+        self.sbv.config(command = self.c.yview)
+        self.c.config(yscrollcommand=self.sbv.set)
         self.init_banner()
         self.init_main()
 
     def init_banner(self):
 
-        self.banner = tk.Frame(self,relief='raised')
-        self.banner.mact = tk.Menu(self.banner,tearoff=0)
-
-        self.banner.mact.add_checkbutton(label='Collapse', command = self.collapse , variable=self.var_col)
-        self.banner.mact.add_command(label='Rename', command = self.banner_txt_show)
-        self.banner.mact.add_command(label='Delete', command = self.mydelete)
-        self.banner.mb = ttk.Menubutton(self.banner,text = 'Action' ,menu = self.banner.mact)
+        self.mact = tk.Menu(self,tearoff=0)
+        self.mact.add_checkbutton(label='Collapse', command = self.collapse , variable=self.var_col)
+        self.mact.add_command(label='Rename', command = self.banner_txt_show)
+        self.mact.add_command(label='Delete', command = self.mydelete)
+        self.mb = ttk.Menubutton(self,text = 'Action' ,menu = self.mact)
         pad = 10
-        self.banner.before_txt = ttk.Label(self.banner, text = 'Model Name:')
-        self.banner.before_ltype = ttk.Label(self.banner, text = 'Model Type:')
-        self.banner.txt = tk.Entry(self.banner,relief='solid')
-        self.banner.ltype = ttk.Label(self.banner, text = self.mytype)
-        self.banner.ltxt = ttk.Label(self.banner, text = '')
+        self.before_txt = ttk.Label(self, text = 'Model Name:')
+        self.before_ltype = ttk.Label(self, text = 'Model Type:')
+        self.txt = tk.Entry(self,relief='solid')
+        self.ltype = ttk.Label(self, text = self.mytype)
+        self.ltxt = ttk.Label(self, text = '')
 
-        self.banner.mb.grid(row=0,rowspan = 2, column = 2, sticky='nswe')
-        self.banner.before_txt.grid(row=0,rowspan = 1, column = 0, sticky='nswe')
-        self.banner.txt.grid(row=0,rowspan = 1, column = 1, sticky='nswe')
-        self.banner.before_ltype.grid(row=1,rowspan = 1, column = 0, sticky='nswe')
-        self.banner.ltype.grid(row=1,rowspan = 1, column = 1, sticky='nswe')
+        self.mb.grid(row=0,rowspan = 2, column = 2, sticky='nswe')
+        self.before_txt.grid(row=0,rowspan = 1, column = 0, sticky='nswe')
+        self.txt.grid(row=0,rowspan = 1, column = 1, sticky='nswe')
+        self.before_ltype.grid(row=1,rowspan = 1, column = 0, sticky='nswe')
+        self.ltype.grid(row=1,rowspan = 1, column = 1, sticky='nswe')
+        self.sbv.grid(row=0,rowspan = 4, column = 3, sticky='ns')
+        self.c.grid(row=2,rowspan = 2, column = 0,columnspan=3, sticky='nswe')
 
-        self.banner.grid_columnconfigure(1,weight = 1 ,uniform = 1,pad = 100)
-        self.banner.grid_columnconfigure([0,2],weight = 0 ,uniform = 0)
-        self.banner.pack(side=TOP,expand=0,fill=X)
+        self.grid_columnconfigure(1,weight = 1 ,uniform = 1)
+        self.grid_columnconfigure(0,weight = 0 ,uniform = '0')
+        self.grid_columnconfigure(2,weight = 0 ,uniform = '00')
+        self.grid_columnconfigure(3,weight = 0 ,uniform = '000')
 
-        self.banner.txt.bind('<KeyPress-Return>',self.banner_txt_ret)
+        self.grid_rowconfigure(0,weight = 0 ,uniform = '0')
+        self.grid_rowconfigure(1,weight = 0 ,uniform = '00')
+        self.grid_rowconfigure(2,weight = 0 ,uniform = '000')
 
-        self.banner.txt.focus()
-
+        self.txt.bind('<KeyPress-Return>',self.banner_txt_ret)
+        self.txt.focus()
+    def xmap(self,e=None):
+        self.c.moveto('cf',self.c.canvasx(0),self.c.canvasy(0))
+        self.c.config(scrollregion = self.c.bbox('cf'))
+    def xconfig(self,e):
+        #self.cf.config(width=e.width,height=e.height)
+        #print('xconfig')
+        self.c.itemconfig('cf',width = e.width)
+        self.c.config(scrollregion = self.c.bbox('all'))
     def banner_txt_ret(self,e):
         self.banner.ltxt['text'] = e.widget.get()
         c = e.widget.grid_info()
@@ -1211,10 +1249,8 @@ class Slot(tk.Frame):
 
     def init_main(self):
 
-        self.main = ttk.Labelframe(self,text='init_main')
-        self.main.pack(side=BOTTOM,expand=1,fill=BOTH )
-        self.main.d_pack =  self.main.pack_info()
-        self.main.d_pack['after'] = self.banner
+        self.main = self.cf
+
 
         self.init_main_details()
         self.init_main_summary()
@@ -1223,18 +1259,15 @@ class Slot(tk.Frame):
 
     def init_main_details(self):
 
-        self.main.details = Updown(self.main,banner_text='Model Details',text = 'init_main_summary')
-        self.main.details.count = 0
-        self.main.details.id1 = dict()
-        self.main.details.id2 = dict()
-        self.main.details.pack(side=TOP,expand=1,fill=BOTH , pady = 10)
+        self.main.details = Updown(self.main,banner_text='Model Details',text = 'init_main_details')
+        self.main.details.main[0].config(text = 'Layers')
+        #TY
+        self.main.details.pack(side=TOP,expand=1,fill=BOTH , pady = [0, 10])
+
 
     def init_main_summary(self):
 
-        self.main.summary = Updown(self.main,banner_text='Model Summary',text = 'init_main_details')
-        self.main.summary.count = 0
-        self.main.summary.id1 = dict()
-        self.main.summary.id2 = dict()
+        self.main.summary = Updown(self.main,banner_text='Model Summary',text = 'init_main_summary')
         self.main.summary.pack(side=TOP,expand=1,fill=BOTH , pady = 10)
 
     def collapse(self):
@@ -1248,29 +1281,142 @@ class Slot(tk.Frame):
     def mydelete(self):
         self.destroy()
 
+
 class K(Slot):
     def __init__(self,parent,**kw):
         super().__init__(parent,'Keras Sequential',**kw)
-        self.neuros = []
-        self.convos = []
-        self.pools = []
+        self.lcount = 0
+        self.neuro_id1 , self.neuro_id2 , self.neuro_id3  = dict() , dict() , dict()
+        self.d_count = 0
+        self.conv_id1 , self.conv_id2 , self.conv_id3  = dict() , dict() , dict()
+        self.c_count = 0
+        self.pool_id1 , self.pool_id2 , self.pool_id3  = dict() , dict() , dict()
+        self.p_count = 0
+
+        self.dense = dict()
 
         self.update_actions()
 
     def update_actions(self):
-        i = self.banner.mact.index('Collapse')
-        for j,c in zip(['Add a Pooling Layer','Add a Convolutional Layer','Add a Dense Neuron Layer'],['add_pool_layer','add_conv_layer','add_neron_layer']):
-            self.banner.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this) )
+        i = self.mact.index('Collapse')
+        self.mact.insert_separator(i)
+        for j,c in zip(['Add a Pooling Layer',
+        'Add a Convolutional Layer',
+        'Add a Dense Neuron Layer','Add a Flattening Layer'],
+        ['add_pool_layer','add_conv_layer','add_neron_layer','add_flatten']):
+            self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
 
+    def update_count(self,plus=1,minus=None):
+        if plus:
+            x = plus
+        elif minus:
+            x = minus
+        self.lcount += x
+        return self.lcount
+    def pack_layer(self, f):
+        f.pack(side=TOP,expand=1,fill=BOTH,padx=5, pady=5)
+        self.xmap()
+    def get_label(self,parent,text,color='purple',enclose=0,font='consolas'):
+        if 'myfont' not in vars(self):
+            self.myfont = self.before_txt.cget('font')
+            self.myfont = tk.font.Font(font=self.myfont)
+        if enclose:
+            text = f'"{text}"'
+        f = self.myfont
+        f['family'] = font
+        l = tk.Label(parent,text = text , font = f , activeforeground=color)
+        return l
+    def add_row(self,m,count,type,**ops):
+        getattr(self,type)[count] = dict()
+
+        for i,j in ops.items():
+            if i == 'left':
+                xcall = j['call']
+                args = j['call_args']
+                left = xcall(m,**args)
+                getattr(self,type)[count]['left'] = left
+            elif i == 'righ':
+                xcall = j['call']
+                args = j['call_args']
+                righ = xcall(m,**args)
+                getattr(self,type)[count]['righ'] = righ
+            elif i == 'menu':
+                args = j.pop('call_args',dict(tearoff = 0))
+                mm = tk.Menu(m,**args)
+                for k,v in j.items():
+                    if k in 'command checkbutton radiobutton'.split():
+                        func = v.pop('func',self.hass)
+                        func = lambda get = func , c=count: get(c)
+                        getattr(tk.Menu,f'add_{k}')(mm,command = func,**v)
+                mb = ttk.Menubutton(m,text = 'Options',menu = mm)
+                getattr(self,type)[count]['menu'] = mm
+                getattr(self,type)[count]['mb'] = mb
+
+        left,righ = locals()['left'] , locals()['righ']
+        left.grid(row=2,column=0)
+        righ.grid(row=2,column=1)
+        try:
+            mb.grid(row=2,column=2)
+        except:
+            pass
+        m.grid_columnconfigure('all',weight=1,uniform=1)
+        return [left,righ,mm,mb]
+
+    def add_flatten(self):
+        c = self.update_count()
+        flat = XUpdown(self.main.details.main[0] , count = c, banner_text  = 'Flatten Layer')
+        self.pack_layer(flat)
+        m = flat.main[0]
+        m.config(text='')
+        mm = tk.Menu(m,tearoff = 0)
+        mm.add_command(label='Syntax: (img_width,img_height,col_channels)')
+        mm.add_separator()
+        left = tk.Label(m,text='Data input shape')
+        righ = tk.Entry(m,relief='solid')
+        mm.add_command(label='Let Keras figure it out',command  = lambda w=righ : self.flatten_auto(w))
+        help = ttk.Menubutton(m,text='Options',menu = mm)
+        left.grid(row=0,column=0)
+        righ.grid(row=0,column=1,padx = 10)
+        help.grid(row=0,column=2)
+        m.grid_columnconfigure([0,1,2],weight=1,uniform=1)
+    def flatten_auto(self,w):
+        w.config(disabledbackground='gray',state='disabled')
     def add_neron_layer(self):
-        l = BannerGridFrame(self.main.fdetails.main,banner_text='Dense Neuron Layer')
-        self.neuros.append(self.main.fdetails.count)
-        self.main.fdetails.id1[self.main.fdetails.count] = l
-        self.main.fdetails.id2[l] = self.main.fdetails.count
-        self.main.fdetails.count += 1
+        print('add_neron_layer called')
+        self.d_count += 1
+        c = self.update_count()
+        f = XUpdown(self.main.details.main[0],count = c, banner_text= f'Dense Neuron Layer {self.d_count}')
+        m = f.main[0]
+        m.config(text='')
+        self.dense[c] = dict(f = m)
+        mn = tk.Menu(m)
+        mb = ttk.Menubutton(m,text='Options',menu=mn)
+        left = tk.Label(m,text='Neurons Count')
+        righ = m.neron_count = tk.Entry(m,relief='solid')
+        mn.add_command(label='Default: 64',command= lambda c=c : self.neuron_count(c,64))
+        self.dense[c]['neuron_count'] = righ
+        left.grid(row=0,column=0)
+        righ.grid(row=0,column=1)
+        mb.grid(row=0,column=2)
+        m.grid_columnconfigure([0,1,2],weight=1,uniform=1)
 
-        l.pack(side=TOP,expand=1,fill=BOTH,padx=5)
+        self.add_row(m,c,'dense',left={
+        'call':ttk.Label,
+        'call_args':dict(text='Activation Function')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Test') })
 
+        self.pack_layer(f)
+    def hass(self,c):
+        print(f'self.pass {c=}')
+    def neuron_count(self,c,count):
+        e = self.dense[c]['neuron_count']
+        e.delete(0,'end')
+        e.insert(0,count)
     def add_conv_layer(self):
         return
         l = BannerGridFrame(self.fmain.fdetails.fmain,banner_text='Convolutional Layer')
