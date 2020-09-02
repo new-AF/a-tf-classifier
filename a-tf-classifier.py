@@ -1149,20 +1149,27 @@ class Updown(ttk.Labelframe):
             call(f)
 
 class XUpdown(Updown):
+    width = 0
     def __init__(self,parent,**kw):
+
         self.count = kw.pop('count',1)
         #self.lwidth = kw.pop('lwidth')
         super().__init__(parent,**kw)
         self.x = '\u274c'
         self.lhead.bind('<ButtonPress>','')
         self.lhead.L.config(cursor=main.cget('cursor'),anchor='w')
+        if XUpdown.width == 0:
+            f = tk.font.Font(font = self.lhead.L.cget('font'))
+            XUpdown.width = f.measure('1'*4)//2
+            #print(f'{XUpdown.width=}')
+            #self.lhead.L.config(width = XUpdown.width)
         self.lhead.I.config(image = '', text = self.x)
         self.lhead.I.bind('<ButtonPress>',self.delete)
         self.lhead.Count = ttk.Label(self.lhead,text = self.count)
         self.lhead.V1 = ttk.Separator(self.lhead, orient = 'vertical')
         self.lhead.V2 = ttk.Separator(self.lhead, orient = 'vertical')
 
-        self.lhead.Count.pack(side=LEFT , before = self.lhead.L)
+        self.lhead.Count.pack(side=LEFT , before = self.lhead.L , padx = XUpdown.width)
         self.lhead.V1.pack(side=LEFT,fill=Y , before = self.lhead.L)
         self.lhead.V2.pack(side=RIGHT,fill=Y , after = self.lhead.L)
 
@@ -1196,7 +1203,7 @@ class Slot(tk.Frame):
     def init_banner(self):
 
         self.mact = tk.Menu(self,tearoff=0)
-        self.mact.add_checkbutton(label='Collapse', command = self.collapse , variable=self.var_col)
+        self.mact.add_checkbutton(label='Collapsed', command = self.collapse , variable=self.var_col)
         self.mact.add_command(label='Rename', command = self.banner_txt_show)
         self.mact.add_command(label='Delete', command = self.mydelete)
         self.mb = ttk.Menubutton(self,text = 'Action' ,menu = self.mact)
@@ -1234,6 +1241,9 @@ class Slot(tk.Frame):
         #print('xconfig')
         self.c.itemconfig('cf',width = e.width)
         self.c.config(scrollregion = self.c.bbox('all'))
+    def xconfigsend(self):
+        w = self.c.winfo_width()
+        self.c.event_generate('<Configure>',width = w )
     def banner_txt_ret(self,e):
         self.banner.ltxt['text'] = e.widget.get()
         c = e.widget.grid_info()
@@ -1286,26 +1296,9 @@ class K(Slot):
     def __init__(self,parent,**kw):
         super().__init__(parent,'Keras Sequential',**kw)
         self.lcount = 0
-        self.neuro_id1 , self.neuro_id2 , self.neuro_id3  = dict() , dict() , dict()
-        self.d_count = 0
-        self.conv_id1 , self.conv_id2 , self.conv_id3  = dict() , dict() , dict()
-        self.c_count = 0
-        self.pool_id1 , self.pool_id2 , self.pool_id3  = dict() , dict() , dict()
-        self.p_count = 0
-
-        self.dense = dict()
+        self.dense , self.conv , self.flat = dict() , dict() , dict()
 
         self.update_actions()
-
-    def update_actions(self):
-        i = self.mact.index('Collapse')
-        self.mact.insert_separator(i)
-        for j,c in zip(['Add a Pooling Layer',
-        'Add a Convolutional Layer',
-        'Add a Dense Neuron Layer','Add a Flattening Layer'],
-        ['add_pool_layer','add_conv_layer','add_neron_layer','add_flatten']):
-            self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
-
     def update_count(self,plus=1,minus=None):
         if plus:
             x = plus
@@ -1313,9 +1306,6 @@ class K(Slot):
             x = minus
         self.lcount += x
         return self.lcount
-    def pack_layer(self, f):
-        f.pack(side=TOP,expand=1,fill=BOTH,padx=5, pady=5)
-        self.xmap()
     def get_label(self,parent,text,color='purple',enclose=0,font='consolas'):
         if 'myfont' not in vars(self):
             self.myfont = self.before_txt.cget('font')
@@ -1326,81 +1316,118 @@ class K(Slot):
         f['family'] = font
         l = tk.Label(parent,text = text , font = f , activeforeground=color)
         return l
-    def add_row(self,m,count,type,**ops):
-        getattr(self,type)[count] = dict()
+
+    def update_actions(self):
+        i = self.mact.index('Collapsed')
+        self.mact.insert_separator(i)
+        for j,c in zip(['Add a Pooling Layer',
+        'Add a Convolutional Layer',
+        'Add a Dense Neuron Layer','Add a Flattening Layer'],
+        ['add_pool_layer','addConvolutional','addNeuron','addFlatten']):
+            self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
+    def addLayer(self, ftext = 'Some Layer', mtext = ''):
+        c = self.update_count()
+        f = XUpdown(self.main.details.main[0] , count = c, banner_text  = ftext)
+        ff = f.main[0]
+        ff.config(text = mtext)
+        self.pack_layer(f)
+        #self.xconfigsend()
+        return (c,f,ff)
+    def pack_layer(self, f):
+        f.pack(side=TOP,expand=1,fill=BOTH,padx=5, pady=5)
+        self.xmap()
+    def add_row(self,m,count,id2,type,**ops):
+        try:
+            getattr(self,type)[count][id2]
+        except:
+            try:
+                getattr(self,type)[count]
+            except:
+                getattr(self,type)[count] = {id2 : dict()}
+            else:
+                getattr(self,type)[count][id2] = dict()
 
         for i,j in ops.items():
             if i == 'left':
                 xcall = j['call']
                 args = j['call_args']
                 left = xcall(m,**args)
-                getattr(self,type)[count]['left'] = left
+                getattr(self,type)[count][id2]['left'] = left
             elif i == 'righ':
                 xcall = j['call']
                 args = j['call_args']
                 righ = xcall(m,**args)
-                getattr(self,type)[count]['righ'] = righ
+                getattr(self,type)[count][id2]['righ'] = righ
             elif i == 'menu':
                 args = j.pop('call_args',dict(tearoff = 0))
                 mm = tk.Menu(m,**args)
                 for k,v in j.items():
                     if k in 'command checkbutton radiobutton'.split():
                         func = v.pop('func',self.hass)
-                        func = lambda get = func , c=count: get(c)
+                        fa = v.pop('func_args',[])
+                        if fa:
+                            func = lambda get = func , c=count: get(c,id2,*fa)
+                        else:
+                            func = lambda get = func , c=count: get(c,id2)
                         getattr(tk.Menu,f'add_{k}')(mm,command = func,**v)
                 mb = ttk.Menubutton(m,text = 'Options',menu = mm)
-                getattr(self,type)[count]['menu'] = mm
-                getattr(self,type)[count]['mb'] = mb
+                getattr(self,type)[count][id2]['menu'] = mm
+                getattr(self,type)[count][id2]['mb'] = mb
 
         left,righ = locals()['left'] , locals()['righ']
-        left.grid(row=2,column=0)
-        righ.grid(row=2,column=1)
+        row = id2 -1
+        print(f'{type=} {count=} {id2=} {row=}')
+        left.grid(row=row,column=0)
+        righ.grid(row=row,column=1)
         try:
-            mb.grid(row=2,column=2)
+            mb.grid(row=row,column=2)
         except:
             pass
         m.grid_columnconfigure('all',weight=1,uniform=1)
         return [left,righ,mm,mb]
 
-    def add_flatten(self):
-        c = self.update_count()
-        flat = XUpdown(self.main.details.main[0] , count = c, banner_text  = 'Flatten Layer')
-        self.pack_layer(flat)
-        m = flat.main[0]
-        m.config(text='')
-        mm = tk.Menu(m,tearoff = 0)
-        mm.add_command(label='Syntax: (img_width,img_height,col_channels)')
-        mm.add_separator()
-        left = tk.Label(m,text='Data input shape')
-        righ = tk.Entry(m,relief='solid')
-        mm.add_command(label='Let Keras figure it out',command  = lambda w=righ : self.flatten_auto(w))
-        help = ttk.Menubutton(m,text='Options',menu = mm)
-        left.grid(row=0,column=0)
-        righ.grid(row=0,column=1,padx = 10)
-        help.grid(row=0,column=2)
-        m.grid_columnconfigure([0,1,2],weight=1,uniform=1)
-    def flatten_auto(self,w):
-        w.config(disabledbackground='gray',state='disabled')
-    def add_neron_layer(self):
-        print('add_neron_layer called')
-        self.d_count += 1
-        c = self.update_count()
-        f = XUpdown(self.main.details.main[0],count = c, banner_text= f'Dense Neuron Layer {self.d_count}')
-        m = f.main[0]
-        m.config(text='')
-        self.dense[c] = dict(f = m)
-        mn = tk.Menu(m)
-        mb = ttk.Menubutton(m,text='Options',menu=mn)
-        left = tk.Label(m,text='Neurons Count')
-        righ = m.neron_count = tk.Entry(m,relief='solid')
-        mn.add_command(label='Default: 64',command= lambda c=c : self.neuron_count(c,64))
-        self.dense[c]['neuron_count'] = righ
-        left.grid(row=0,column=0)
-        righ.grid(row=0,column=1)
-        mb.grid(row=0,column=2)
-        m.grid_columnconfigure([0,1,2],weight=1,uniform=1)
+    def addFlatten(self):
+        c,_,m = self.addLayer('Flattening Layer')
+        print('addFlatten called')
 
-        self.add_row(m,c,'dense',left={
+        id2 = 1
+        self.flat[c] = {id2 : { 'flat_auto' : tk.IntVar(value=0) } }
+
+
+        self.add_row(m,c,id2,'flat',left={
+        'call':ttk.Label,
+        'call_args':dict(text='Data Input Shape')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'checkbutton' : dict(label='Default: Let Keras figure it out',
+        func=self.flat_auto , variable = self.flat[c][id2]['flat_auto'] ) })
+
+    def flat_auto(self,c,cc):
+        w = self.flat[c][cc]['righ']
+        v = self.flat[c][cc]['flat_auto'].get()
+        s = ['normal','disabled'][v]
+        w.config(disabledbackground='gray',state=s)
+    def addNeuron(self):
+        c,_,m = self.addLayer('Neuron Layer')
+        print('addNeuron called')
+
+        id2 = 1
+        self.add_row(m,c,id2,'dense',left={
+        'call':ttk.Label,
+        'call_args':dict(text='Neurons Count')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: 128',
+        func=self.neuron_count , func_args = [128]) })
+
+        id2 = 2
+        self.add_row(m,c,id2,'dense',left={
         'call':ttk.Label,
         'call_args':dict(text='Activation Function')
         },
@@ -1408,27 +1435,73 @@ class K(Slot):
         'call':tk.Entry,
         'call_args':dict(relief='solid')
         },
-        menu = { 'command' : dict(label='Test') })
+        menu = { 'command' : dict(label='Default: "relu"',
+        func=self.neuron_af , func_args = ['"relu"']) })
 
-        self.pack_layer(f)
-    def hass(self,c):
-        print(f'self.pass {c=}')
-    def neuron_count(self,c,count):
-        e = self.dense[c]['neuron_count']
+    def neuron_af(self,c,cc,func):
+        w = self.dense[c][cc]['righ']
+        w.delete(0,'end')
+        w.insert(0,func)
+    def neuron_count(self,c,cc,count):
+        e = self.dense[c][cc]['righ']
         e.delete(0,'end')
         e.insert(0,count)
-    def add_conv_layer(self):
-        return
-        l = BannerGridFrame(self.fmain.fdetails.fmain,banner_text='Convolutional Layer')
-        self.convos.append(self.fmain.fdetails.count)
-        self.fmain.fdetails.id1[self.fmain.fdetails.count] = l
-        self.fmain.fdetails.id2[l] = self.fmain.fdetails.count
-        self.fmain.fdetails.count += 1
+    def addConvolutional(self):
+        c,_,m = self.addLayer('2D Convolutional Layer')
 
-        l.pack(side=TOP,expand=1,fill=BOTH,padx=5)
+        id2 = 1
+        dname = 'conv'
+        self.add_row(m,c,id2,dname,left={
+        'call':ttk.Label,
+        'call_args':dict(text='Convolution Iteration(s)')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: 32',
+        func=self.conv_count , func_args = [32])  })
 
-    def add_pool_layer(self):
-        pass
+        id2 = 2
+        self.add_row(m,c,id2,dname,left={
+        'call':ttk.Label,
+        'call_args':dict(text='Filter Size')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: (3,3)',
+        func=self.conv_filter_size , func_args = ['(3,3)'])  })
+
+        id2 = 3
+        self.add_row(m,c,id2,dname,left={
+        'call':ttk.Label,
+        'call_args':dict(text='Activation Function')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: "relu"',
+        func=self.conv_af , func_args = ['"relu"'])  })
+
+    def conv_count(self,c,cc,count):
+        e = self.conv[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,count)
+    def conv_filter_size(self,c,cc,size):
+        e = self.conv[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,size)
+    def conv_af(self,c,cc,func):
+        e = self.conv[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,func)
+    def hass(self,c):
+        print(f'self.pass {c=}')
+
+
 #--------------------------------------------------------------------------------------------#
 
 # models main frame
