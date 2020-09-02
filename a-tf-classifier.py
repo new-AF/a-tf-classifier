@@ -670,7 +670,7 @@ class Path:
         self.cols=[0,1,2,3]
         self.templ=['']*len(self.cols)
         self.tree.config(columns=self.cols)
-        self.tree.column('#0',width=40,stretch=0)
+        self.tree.column('#0',width=40,stretch=1)
         for i,c in zip('Classes-Has Uncategorized Images-Has Validation-Has Training'.split('-'),self.cols):
             self.tree.heading(c,anchor='center',text=i)
             self.tree.column(c,minwidth=10,width=70,anchor='center')
@@ -988,6 +988,7 @@ def ifcollapse(menu,chindex,parent,geom):
 # dataset main frame
 (frame0 := ttk.LabelFrame(zerodo, text = 'Zero')).pack(side=TOP,expand=1,fill=BOTH)
 (frame1 := ttk.LabelFrame(zerodo, text = 'One')).pack(side=TOP,expand=1,fill=BOTH)
+(frame2 := ttk.LabelFrame(zerodo, text = 'Two')).pack(side=TOP,expand=1,fill=BOTH)
 #frame1.grid_remove()
 #--------------------------------------------------------------------------------------------#
 #           Emulating Tabs/Sections within the ui
@@ -1182,23 +1183,30 @@ class Slot(tk.Frame):
     def __init__(self,parent,type,**kw):
         super().__init__(parent,**kw)
         self.config(bg=RED , relief = 'raised' , bd = 10)
-        self.var_col = tk.IntVar(value=1)
+        self.var_col = tk.IntVar(value=0)
         self.mytype = type
 
         #PACK AUTOMATICALLY ON PARENT
-        self.pack(side=TOP,fill=X)
+        self.pack(side=TOP,fill=X,pady=[0,10])
 
-
-        self.sbv = tk.Scrollbar(self)
-        self.c = tk.Canvas(self,bg=BLUE)
-        self.cf = tk.Frame(self.c)
-        self.c.create_window(0,0,window=self.cf,tag='cf')
-        self.c.bind('<Visibility>',self.xmap) ; self.xmapped = 1
-        self.c.bind('<Configure>',self.xconfig)
-        self.sbv.config(command = self.c.yview)
-        self.c.config(yscrollcommand=self.sbv.set)
         self.init_banner()
         self.init_main()
+
+
+    def once_config(self,e):
+        c = self.master.master
+        self.scrolldown_and_bbox(c)
+        e.widget.bind('<Configure>','')
+
+    def scrolldown_and_bbox(self,c):
+        self.dobbox(c)
+        self.scrolldown(c)
+
+    def dobbox(self,c):
+        c.config(scrollregion = c.bbox('all'))
+
+    def scrolldown(self,c):
+        c.yview_moveto(1)
 
     def init_banner(self):
 
@@ -1208,8 +1216,8 @@ class Slot(tk.Frame):
         self.mact.add_command(label='Delete', command = self.mydelete)
         self.mb = ttk.Menubutton(self,text = 'Action' ,menu = self.mact)
         pad = 10
-        self.before_txt = ttk.Label(self, text = 'Model Name:')
-        self.before_ltype = ttk.Label(self, text = 'Model Type:')
+        self.before_txt = ttk.Label(self, text = 'Model Name:',anchor = 'w')
+        self.before_ltype = ttk.Label(self, text = 'Model Type:',anchor = 'w')
         self.txt = tk.Entry(self,relief='solid')
         self.ltype = ttk.Label(self, text = self.mytype)
         self.ltxt = ttk.Label(self, text = '')
@@ -1219,31 +1227,27 @@ class Slot(tk.Frame):
         self.txt.grid(row=0,rowspan = 1, column = 1, sticky='nswe')
         self.before_ltype.grid(row=1,rowspan = 1, column = 0, sticky='nswe')
         self.ltype.grid(row=1,rowspan = 1, column = 1, sticky='nswe')
-        self.sbv.grid(row=0,rowspan = 4, column = 3, sticky='ns')
-        self.c.grid(row=2,rowspan = 2, column = 0,columnspan=3, sticky='nswe')
 
-        self.grid_columnconfigure(1,weight = 1 ,uniform = 1)
-        self.grid_columnconfigure(0,weight = 0 ,uniform = '0')
-        self.grid_columnconfigure(2,weight = 0 ,uniform = '00')
+        self.grid_columnconfigure([0,2],weight = 1 ,uniform = 1)
+        self.grid_columnconfigure(1,weight = 2 ,uniform = 1)
         self.grid_columnconfigure(3,weight = 0 ,uniform = '000')
 
         self.grid_rowconfigure(0,weight = 0 ,uniform = '0')
         self.grid_rowconfigure(1,weight = 0 ,uniform = '00')
         self.grid_rowconfigure(2,weight = 0 ,uniform = '000')
+        self.grid_rowconfigure(2,weight = 0 ,uniform = 1)
 
         self.txt.bind('<KeyPress-Return>',self.banner_txt_ret)
         self.txt.focus()
-    def xmap(self,e=None):
-        self.c.moveto('cf',self.c.canvasx(0),self.c.canvasy(0))
-        self.c.config(scrollregion = self.c.bbox('cf'))
-    def xconfig(self,e):
-        #self.cf.config(width=e.width,height=e.height)
-        #print('xconfig')
-        self.c.itemconfig('cf',width = e.width)
-        self.c.config(scrollregion = self.c.bbox('all'))
-    def xconfigsend(self):
-        w = self.c.winfo_width()
-        self.c.event_generate('<Configure>',width = w )
+    def xconfig(self,e=None):
+        return
+    def xmap(self):
+        return
+        com = self.sbv.cget('command')
+        self.sbv.config(command='')
+        self.c.config(scrollregion=self.c.bbox('cf'))
+        self.sbv.config(command=self.c.yview)
+
     def banner_txt_ret(self,e):
         self.banner.ltxt['text'] = e.widget.get()
         c = e.widget.grid_info()
@@ -1259,34 +1263,32 @@ class Slot(tk.Frame):
 
     def init_main(self):
 
-        self.main = self.cf
-
 
         self.init_main_details()
         self.init_main_summary()
 
-        #self.collapse()
 
     def init_main_details(self):
 
-        self.main.details = Updown(self.main,banner_text='Model Details',text = 'init_main_details')
-        self.main.details.main[0].config(text = 'Layers')
+        self.details = Updown(self,banner_text='Model Details',text = 'init_main_details')
+        self.details.main[0].config(text = 'Layers')
         #TY
-        self.main.details.pack(side=TOP,expand=1,fill=BOTH , pady = [0, 10])
-
+        #self.details.pack(side=TOP,expand=1,fill=BOTH , pady = [0, 10])
+        self.details.grid(row=2,rowspan = 1, column = 0, columnspan = 3, sticky='nswe')
 
     def init_main_summary(self):
 
-        self.main.summary = Updown(self.main,banner_text='Model Summary',text = 'init_main_summary')
-        self.main.summary.pack(side=TOP,expand=1,fill=BOTH , pady = 10)
-
+        self.summary = Updown(self,banner_text='Model Summary',text = 'init_main_summary')
+        #self.summary.pack(side=TOP,expand=1,fill=BOTH , pady = 10)
+        self.summary.grid(row=3,rowspan = 1, column = 0, columnspan =3, sticky='nswe')
+        self.summary.bind('<Configure>',self.once_config)
     def collapse(self):
-        s = not self.var_col.get()
+        s = self.var_col.get()
 
-        add = [dict(),self.main.d_pack][s]
-        call = getattr(tk.Pack,'pack%s'%(['_forget',''][s]))
+        call = [tk.Grid.grid,tk.Grid.grid_remove][s]
+        call(self.details)
+        call(self.summary)
 
-        call(self.main,**add)
 
     def mydelete(self):
         self.destroy()
@@ -1295,10 +1297,12 @@ class Slot(tk.Frame):
 class K(Slot):
     def __init__(self,parent,**kw):
         super().__init__(parent,'Keras Sequential',**kw)
+        self.parent = parent
         self.lcount = 0
-        self.dense , self.conv , self.flat = dict() , dict() , dict()
+        self.dense , self.conv , self.flat , self.pool = dict() , dict() , dict() , dict()
 
         self.update_actions()
+
     def update_count(self,plus=1,minus=None):
         if plus:
             x = plus
@@ -1323,11 +1327,11 @@ class K(Slot):
         for j,c in zip(['Add a Pooling Layer',
         'Add a Convolutional Layer',
         'Add a Dense Neuron Layer','Add a Flattening Layer'],
-        ['add_pool_layer','addConvolutional','addNeuron','addFlatten']):
+        ['addPool','addConvolutional','addNeuron','addFlatten']):
             self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
     def addLayer(self, ftext = 'Some Layer', mtext = ''):
         c = self.update_count()
-        f = XUpdown(self.main.details.main[0] , count = c, banner_text  = ftext)
+        f = XUpdown(self.details.main[0] , count = c, banner_text  = ftext)
         ff = f.main[0]
         ff.config(text = mtext)
         self.pack_layer(f)
@@ -1376,7 +1380,7 @@ class K(Slot):
 
         left,righ = locals()['left'] , locals()['righ']
         row = id2 -1
-        print(f'{type=} {count=} {id2=} {row=}')
+        #print(f'{type=} {count=} {id2=} {row=}')
         left.grid(row=row,column=0)
         righ.grid(row=row,column=1)
         try:
@@ -1412,7 +1416,7 @@ class K(Slot):
         w.config(disabledbackground='gray',state=s)
     def addNeuron(self):
         c,_,m = self.addLayer('Neuron Layer')
-        print('addNeuron called')
+        #print('addNeuron called')
 
         id2 = 1
         self.add_row(m,c,id2,'dense',left={
@@ -1498,6 +1502,25 @@ class K(Slot):
         e = self.conv[c][cc]['righ']
         e.delete(0,'end')
         e.insert(0,func)
+    def addPool(self):
+        c,_,m = self.addLayer('Pooling Layer')
+        #print('addPool called')
+
+        id2 = 1
+        self.add_row(m,c,id2,'pool',left={
+        'call':ttk.Label,
+        'call_args':dict(text='Pooling Filter Type')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: "MaxPooling2D"',
+        func=self.pool_type , func_args = ['"MaxPooling2D"']) })
+    def pool_type(self,c,cc,type):
+        e = self.pool[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,type)
     def hass(self,c):
         print(f'self.pass {c=}')
 
@@ -1505,31 +1528,60 @@ class K(Slot):
 #--------------------------------------------------------------------------------------------#
 
 # models main frame
-frame1.fmain = ttk.LabelFrame                       (frame1, text = 'f1main')
-frame1.fmain.fup = ttk.LabelFrame                   (frame1.fmain, text = '11')
-frame1.fmain.fup.madd=tk.Menu                    (frame1.fmain.fup,tearoff=0)
-frame1.fmain.fup.madd.add_command                   (label='Keras Sequential',command = lambda : K(frame1.scmain.fplace.fmain))
-frame1.fmain.fup.badd = ttk.Menubutton              (frame1.fmain.fup,text='New',menu=frame1.fmain.fup.madd)
+
+class Frame1Model:
+    def __init__(self,parent = frame1):
+        self.parent = parent
+        self.prepareModel()
+        self.hook = 1
+    def prepareModel(self):
+        parent = self.parent
+        self.new_menu = tk.Menu                   (parent,tearoff=0)
+        self.new_menu.add_command                 (label='Keras Sequential',command = lambda : self.startModel(K))
+        self.new_mb = ttk.Menubutton              (parent,text='New Model',menu=self.new_menu)
+        self.new_mb.grid(row=0,column=3,sticky='nswe')
+        self.sbv = tk.Scrollbar(parent)
+        self.c = tk.Canvas(parent,bg=BLUE)
+        self.cf = tk.Frame(self.c)
 
 
+        #self.cf.bind('<Visibility>',self.once_bbox)
+        self.c.bind('<Configure>',self.onconfig)
+        self.sbv.config(command = self.c.yview)
+        self.c.config(yscrollcommand=self.sbv.set)
 
-frame1.fmain.pack(side=TOP,expand=1,fill=BOTH)
-frame1.fmain.fup.pack(side=TOP,expand=0,fill=X)
-frame1.fmain.fup.badd.pack(side=RIGHT,expand=0,fill=NONE)
+        self.sbv.grid(row = 0, column = 2, rowspan = 2, sticky = 'ns')
+        self.new_mb.grid(row = 0, column = 1, sticky = 'nswe')
+        self.c.grid(row = 1, column = 0, columnspan = 2, sticky = 'nswe')
+
+        parent.grid_columnconfigure(2,weight=0,uniform='0')
+        parent.grid_columnconfigure(1,weight=0,uniform='00')
+        parent.grid_columnconfigure(0,weight=1,uniform=1)
+        parent.grid_rowconfigure(1,weight=1,uniform=1)
+        self.sbv.grid_remove()
 
 
-frame1.scmain = ScrollableCanvas                    (frame1.fmain)
-frame1.scmain.fplace = ttk.Frame                    (frame1.scmain)
-frame1.scmain.fplace.fmain = tk.Frame               (frame1.scmain.fplace) #,bg=RED
+    def startModel(self, _class):
+        parent = self.parent
+        self.sbv.grid()
 
-frame1.scmain.pack(side=TOP,expand=1,fill=BOTH)
-frame1.scmain.c.create_window(0,0,window=frame1.scmain.fplace, tag = 'fplace')
-frame1.scmain.fplace.place(relx = 0, rely=0, relwidth = 1, relheight = 1)
+        if self.hook:
+            self.hook = 0
+            c,cf=self.c , self.cf
+            x,y = c.canvasx(0),c.canvasy(0)
+            self.c.create_window(0,0,window=self.cf,tag='cf',anchor='nw') # <Configure> event fired. after this
+            self.c.config(scrollregion=self.c.bbox('all'))
 
-frame1.scmain.fplace.fmain.pack(side=TOP,expand=1,fill=BOTH)
+        _class(self.cf)
+        #self.c.yview_moveto(1)
+
+    def onconfig(self,e):
+        print('onconfig called')
+        self.c.config(scrollregion=self.c.bbox('all'))
+        self.c.itemconfig('cf', width = e.width)
 
 
-#frame1.scmain.c.bind('<Configure>',lambda e: e.widget.itemconfig( 'fplace', width = e.width , height = e.height))
+this = Frame1Model(frame1)
 #--------------------------------------------------------------------------------------------#
 
 #/frame0/exe entry
@@ -2143,7 +2195,7 @@ Moveto = To([guncat,g01,g02])
 frame0.Slide_state=1
 frame1.Slide_state=1
 
-switch = Slide(zeroup,[(frame0,'Configure Dataset'),(frame1,'Build Model')],sel=0)
+switch = Slide(zeroup,[(frame0,'Configure Dataset'),(frame1,'Build Model'),(frame2,'Run Model')],sel=0)
 switch.pack(side=TOP,expand=0,fill=NONE)
 
 #main.wm_attributes('-top',1)
