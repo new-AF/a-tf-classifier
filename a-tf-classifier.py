@@ -189,6 +189,7 @@ class Gallery(ttk.Labelframe):
 
 
         self.previewrunid=None
+
     def init_menu(self):
         self.M = m = tk.Menu(main,tearoff=0)
         mm = tk.Menu(m,tearoff=0)
@@ -212,6 +213,7 @@ class Gallery(ttk.Labelframe):
         self.sbv.grid(row=0,column=5,sticky='ns',rowspan=3)
         self.sbh.grid(row=2,column=0,sticky='we',columnspan=6)
         self.c.grid(row=1,column=0,sticky='nswe',columnspan=5)
+        self.Progress.grid(row=3,column=0,columnspan=6,sticky='we')
 
         for i in range(6):
             self.grid_columnconfigure(i,weight=0,uniform=i)
@@ -223,6 +225,7 @@ class Gallery(ttk.Labelframe):
         self.Scale.L.grid_remove()
         self.Scale.x.grid_remove()
         self.Scale.R.grid_remove()
+        self.Progress.grid_remove()
 
     def ifshow(self,widget , s):
         #assumption: all managed by grid
@@ -275,12 +278,13 @@ class Gallery(ttk.Labelframe):
 
 
     def remove_selected(self,to = None,*cs):
-        cs = cs if cs else self.get_selected_imgs()
+        #print('remove selected')
+        cs = cs if cs else self.get_selected_imgs(ids=1)
         new = dict(objpil=dict() , _f_id = dict() , _f_id2 = dict() )
         cc = to.count
         for c in cs:
             t= 'i%d'%c
-            print(f'{c=} {cc=}')
+            #print(f'{c=} {cc=}')
             new['objpil'][cc] = self.objpil.pop(c)
             new['_f_id'][cc] = self._dict['_f_id'].pop(c)
             new['_f_id2'][cc] = self._dict['_f_id2'].pop(c)
@@ -326,7 +330,7 @@ class Gallery(ttk.Labelframe):
             self.c.tag_bind(tag,'<Enter>',self.preview_enter)
             self.c.tag_bind(tag,'<Leave>',self.preview_leave)
             self.c.tag_bind(tag,'<Motion>',self.preview_motion)
-            #print(f'new {x=} {y=}')
+            print(f'new {x=} {y=}')
 
         self._sent.clear()
         self.update_labelframe_text()
@@ -419,7 +423,7 @@ class Gallery(ttk.Labelframe):
         self.count = self._dict['_f_count']
         self.Pvar.set(0)
         self.Progress.config(max=self.count)
-        self.ifshow(self.Progress,0)
+        self.ifshow(self.Progress,1)
 
         coords = self.getcoords()
         merge = zip(coords,self._dict['_f_id2'].items(),self._dict['_f_id'].values() )
@@ -528,20 +532,24 @@ class Gallery(ttk.Labelframe):
         self.count_selected = 0
         self.update_labelframe_text()
 
-    def get_selected_imgs(self, pils = 0 , names = 0 , paths = 0):
+    def get_selected_imgs(self,**kw):
         cs = [self.s_uu[s] for s in self.s_used]
 
         nest=0
         ret = []
-        if pils:
-            ret += [[self.objpil[i] for i in cs]]
-            nest+=1
-        if names:
-            ret += [[ self._dict['_f_id'][c] for c in cs] ]
-            nest+=1
-        if paths:
-            ret += [[ self._dict['_f_id2'][c] for c in cs] ]
-            nest+=1
+        for i in kw:
+            if i == 'pils':
+                ret += [[self.objpil[i] for i in cs]]
+                nest+=1
+            elif i == 'names':
+                ret += [[ self._dict['_f_id'][c] for c in cs] ]
+                nest+=1
+            elif i == 'paths':
+                ret += [[ self._dict['_f_id2'][c] for c in cs] ]
+                nest+=1
+            elif i == 'ids':
+                ret += [cs]
+                nest += 1
 
         if nest < 2:
             if nest:
@@ -684,6 +692,60 @@ class Gallery(ttk.Labelframe):
         p,n = self.get_selected_imgs(pils=1,names=1)
         view = View(img0_list =  p, names = n)
 
+class GalleryManager:
+
+    def __init__(self,parent):
+
+        self.parent = globals()['right']
+        self.pack_args = dict(side=TOP,expand=1,fill=BOTH)
+        self.active_id = []
+        self.galleries = dict()
+        self.cat_frames = dict()
+        self.h = 0.9
+        self.categories_dict = {'uncategorized':'Uncategorized Images','training':'Training Images','validation':'Validation Images','testing':'Testing Images'}
+        self.categories_count = len(self.categories_dict)
+        self.start = 1-self.h
+        self.dy = self.h / self.categories_count
+        self.y = [self.start+(i*self.dy) for i in range(self.categories_count)]
+        self.inplace = 0
+        self.init()
+    def init(self):
+        for cat,y  in zip(self.categories_dict.items(),self.y):
+            word,label = cat
+            self.cat_frames[word] = (f:= ttk.Frame(self.parent))
+            f.place(x=0,rely=y,relwidth=1,relheight=self.dy)
+
+    def clear(self):
+        if not self.active_id:
+            return
+
+        for k,v in self.galleries[self.active_id].items():
+            v.pack_forget()
+
+    def show(self,id):
+        for k,v in self.galleries[id].items():
+            v.pack(**self.pack_args)
+        self.active_id = id
+
+    def load(self,id,**kw):
+        if id not in self.galleries:
+            self.clear()
+            self.galleries[id] = dict()
+            for cat,_dict in kw.items():
+                label = self.categories_dict[cat]
+                self.galleries[id][cat] = (g:= Gallery(f:=self.cat_frames[cat],text=label))
+                g.pack(**self.pack_args)
+                g._dict = _dict
+                g.W = f.winfo_width()
+                g.H = f.winfo_height()
+                g.Threadload()
+                self.active_id = id
+        else:
+            self.clear()
+            self.show(id)
+
+
+
 
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
@@ -713,15 +775,11 @@ class LabelAB(tk.Frame):
 
 #asses path from the dialog
 class Path:
-    def __init__(self,tree=None,gallery=[],path=None):
+    def __init__(self,tree=None,path=None):
         if tree is None:
             raise('tree=... is empty')
             return
-        if not gallery:
-            raise('gallery=... is empty')
-            return
-        #uncategorized, validation,training galleries
-        self.ug, self.vg, self.tg, self.testg  = gallery
+
 
         self.yes='\u2714'
         self.no='\u274c'
@@ -872,15 +930,16 @@ class Path:
         banner.config(text=id1)
         _dict = self.all[id1]
 
-        self.ug._dict = dict(_p = _dict['_p'], _f_id = _dict['_f_id'] , _f_id2 = _dict['_f_id2'] , _f_count = _dict['_f_count'] )
-        self.tg._dict = dict(_p = _dict['_t'], _f_id = _dict['_t_id'] , _f_id2 = _dict['_t_id2'] , _f_count = _dict['_t_count'] )
-        self.vg._dict = dict(_p = _dict['_v'], _f_id = _dict['_v_id'] , _f_id2 = _dict['_v_id2'] , _f_count = _dict['_v_count'] )
-        self.testg._dict = dict(_p = _dict['_test'], _f_id = _dict['_test_id'] , _f_id2 = _dict['_test_id2'] , _f_count = _dict['_test_count'] )
 
-        self.ug.Threadload()
-        self.tg.Threadload()
-        self.vg.Threadload()
-        self.testg.Threadload()
+
+        Uncat = dict(_p = _dict['_p'], _f_id = _dict['_f_id'] , _f_id2 = _dict['_f_id2'] , _f_count = _dict['_f_count'] )
+        Train = dict(_p = _dict['_t'], _f_id = _dict['_t_id'] , _f_id2 = _dict['_t_id2'] , _f_count = _dict['_t_count'] )
+        Valid = dict(_p = _dict['_v'], _f_id = _dict['_v_id'] , _f_id2 = _dict['_v_id2'] , _f_count = _dict['_v_count'] )
+        Test = dict(_p = _dict['_test'], _f_id = _dict['_test_id'] , _f_id2 = _dict['_test_id2'] , _f_count = _dict['_test_count'] )
+
+        gm = globals()['GM']
+        gm.load(id1, uncategorized = Uncat , training = Train , validation = Valid , testing = Test)
+
 
 
 def _center(w,width=None,h=None):
@@ -1989,11 +2048,11 @@ class Allocate(tk.Toplevel):
 
 
 #paned/right frame/second paned window/"uncategorized" frame/
-(All:=Gallery(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.225)
+#(All:=Gallery(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.225)
 
 
 #paned/right frame/top frame
-(Train:=Gallery(right,text='Training Images')).place(rely=0.325 , x = 0, relwidth=1, relheight=0.225)
+#(Train:=Gallery(right,text='Training Images')).place(rely=0.325 , x = 0, relwidth=1, relheight=0.225)
 
 
 #paned/right frame/top frame/frame00/parent path LabelAB
@@ -2003,16 +2062,16 @@ class Allocate(tk.Toplevel):
 #--------------------------------------------------------------------------------------------#
 
 #paned/right frame/bottom frame
-(Valid:=Gallery(right,text='Validation Images')).place(rely=0.55 , x = 0, relwidth=1, relheight=0.225)
+#(Valid:=Gallery(right,text='Validation Images')).place(rely=0.55 , x = 0, relwidth=1, relheight=0.225)
 
 #paned/right frame/top frame
-(Test:=Gallery(right,text='Testing Images')).place(rely=0.775 , x = 0, relwidth=1, relheight=0.225)
+#(Test:=Gallery(right,text='Testing Images')).place(rely=0.775 , x = 0, relwidth=1, relheight=0.225)
 
 
 #chosen path assesor
-Tpath=Path(tree=tree,gallery=[All,Train,Valid,Test])
+Tpath=Path(tree=tree)
 
-Main_allocate = Allocate([All,Train,Valid,Test])
+#Main_allocate = Allocate([All,Train,Valid,Test])
 
 """Tpath.mytop = tk.Toplevel(main)
 
@@ -2074,6 +2133,7 @@ class To(tk.Toplevel):
         self.f.grid_rowconfigure('all',pad=10)
         self.f.grid_columnconfigure([0,1],uniform=10,weight=1)
         self.f.grid_rowconfigure(count,pad=10)
+
     def show(self,sentg):
         self.g=sentg
         if not sentg.s_used:
@@ -2095,7 +2155,7 @@ class To(tk.Toplevel):
 
 
 main.title('A TF Classifier')
-Moveto = To([All,Train,Valid,Test])
+#Moveto = To([All,Train,Valid,Test])
 
 #zerodo.grid_columnconfigure('all',weight=1,uniform='default')
 #zerodo.grid_rowconfigure('all',weight=1,uniform='default')
@@ -2109,5 +2169,7 @@ switch.pack(side=TOP,expand=0,fill=NONE)
 #main.wm_attributes('-top',1)
 
 _center(main,500,500)
+
+GM = GalleryManager(right)
 
 main.mainloop()
