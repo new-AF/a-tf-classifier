@@ -131,22 +131,32 @@ class ScrollableCanvas(tk.Frame):
         self.D.quotehide()
     def updatesregion(self,lsttag=None,bbox=1):
         self.c.config(scrollregion=(self.c.bbox(lsttag if lsttag else 'all')) if bbox else (lsttag))
-class Gallery:
+class Gallery(ttk.Labelframe):
 
-    def __init__(self,**kw):
+    def __init__(self,parent,**kw):
 
-        self.on = kw.pop('on',0)
-
-        if  not self.on:
-            raise('Missing on= ... option')
-            return
-        if 'c' not in vars(self.on):
-            raise(f'Missing "self.c" / "c" instance variable in "{self.on}"')
-            return
+        super().__init__(parent,**kw)
 
         self.run = 0
-        self.progress=kw.pop('progress')
+        self.Pvar = tk.IntVar()
+        self.Progress=ttk.Progressbar(self,orient = 'horizontal',variable=self.Pvar)
+        self.c = tk.Canvas(self)
+        self.sbv , self.sbh = ttk.Scrollbar(self,orient = 'vertical',command = self.c.yview) , ttk.Scrollbar(self,orient = 'horizontal',command = self.c.xview)
+        self.c.config(xscrollcommand=self.sbh.set, yscrollcommand=self.sbv.set)
+        self.Svar = tk.IntVar(value=1)
+        self.SLvar = tk.StringVar(value=1)
+        self.Scale = ttk.Scale(self,variable=self.Svar)
+        self.Scale.L = ttk.Label(self,textvariable=self.SLvar)
+        self.Scale.R = ttk.Label(self,textvariable=self.SLvar)
+        self.Scale.x = ttk.Label(self,text='x')
 
+        self.init_menu()
+        self.init_grid()
+        self.scale_init()
+
+        self.W = 1
+        self.H = 1
+        self.c.bind('<Configure>',self.xconfig)
         self.thumbW, self.thumbH = (50, 50)
         self.imgW , self.imgH = self.thumbW , self.thumbH
 
@@ -174,17 +184,74 @@ class Gallery:
         self.objimgtk=dict()
 
         self.selected = None
-        self.on.localBind(self.on.c,configure_=self.Threadmoving) ; # _ means add=1
-        self.varProg = 0
+        #self.c.bind('<Configure>',self.Threadmoving,add=1) ; # _ means add=1
 
-        self.Scale = kw.pop('scale',0)
-        self.Scale.start = 0
-        self.Scale.s.bind('<ButtonPress>',self.scale_start)
-        self.Scale.s.bind('<ButtonRelease>',self.scale_end)
-        self.Scale.s.config(command = self.scale_command)
+
 
         self.previewrunid=None
+    def init_menu(self):
+        self.M = m = tk.Menu(main,tearoff=0)
+        mm = tk.Menu(m,tearoff=0)
+        self.Mb=ttk.Menubutton(self,text='Actions',menu=m)
+        mm.add_checkbutton(label='Unselect', command=lambda : self.deselect())
+        mm.add_separator()
+        mm.add_command(label='Move to', command = lambda : Moveto.show(self))
+        m.add_checkbutton(label='Expand')
+        m.add_separator()
+        m.add_cascade(label='Selection',menu = mm)
+        m.add_separator()
+        m.add_command(label='Partition this set', command=lambda : Main_allocate.myshow(self))
+
+
+    def init_grid(self):
+        self.Scale.grid(row=0,column=0,sticky='nswe')
+        self.Scale.L.grid(row=0,column=1,sticky='w')
+        self.Scale.x.grid(row=0,column=2,sticky='w')
+        self.Scale.R.grid(row=0,column=3,sticky='w')
+        self.Mb.grid(row=0,column=4,sticky='e')
+        self.sbv.grid(row=0,column=5,sticky='ns',rowspan=3)
+        self.sbh.grid(row=2,column=0,sticky='we',columnspan=6)
+        self.c.grid(row=1,column=0,sticky='nswe',columnspan=5)
+
+        for i in range(6):
+            self.grid_columnconfigure(i,weight=0,uniform=i)
+        self.grid_columnconfigure(4,weight=1,uniform='4i')
+        self.grid_rowconfigure(0,weight=0,uniform=0)
+        self.grid_rowconfigure(1,weight=1,uniform=1)
+
+        self.Scale.grid_remove()
+        self.Scale.L.grid_remove()
+        self.Scale.x.grid_remove()
+        self.Scale.R.grid_remove()
+
+    def ifshow(self,widget , s):
+        #assumption: all managed by grid
+        call = [tk.Grid.grid,tk.Grid.grid_remove][not s]
+        call(widget)
+
+    def xconfig(self,e):
+        self.c.configure(scrollregion = self.c.bbox('all'))
+        self.W = e.width
+        self.H = e.height
+
+    def dobbox(self):
+        self.c.configure(scrollregion = self.c.bbox('all'))
+
+    def scale_init(self):
+        self.Scale.start = 0
+        self.Scale.bind('<ButtonPress>',self.scale_start)
+        self.Scale.bind('<ButtonRelease>',self.scale_end)
+        self.Scale.config(command = self.scale_command)
+
+    def scale_ifshow(self,s):
+        self.ifshow(self.Scale , s)
+        self.ifshow(self.Scale.L , s)
+        self.ifshow(self.Scale.x , s)
+        self.ifshow(self.Scale.R , s)
+
+
     def Threadmoving(self,e):
+        return
         if 'W' not in vars(self.on) or self.count == 0:
             return
         #put(f'{(self.on.W , self.lastWidth)} {(self.thumbW + self.padX)} ; {(self.on.W - self.lastWidth)} < {(self.thumbW + self.padX)}')
@@ -217,7 +284,7 @@ class Gallery:
             new['objpil'][cc] = self.objpil.pop(c)
             new['_f_id'][cc] = self._dict['_f_id'].pop(c)
             new['_f_id2'][cc] = self._dict['_f_id2'].pop(c)
-            self.on.c.delete(t)
+            self.c.delete(t)
             self.objimgtk.pop(c)
             self.objthumb.pop(c)
             cc += 1
@@ -251,14 +318,14 @@ class Gallery:
             self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
             self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
 
-            self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
+            self.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
 
-            self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
-            self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
+            self.c.tag_bind(tag,'<ButtonPress>',self.select)
+            self.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
 
-            self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
-            self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
-            self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
+            self.c.tag_bind(tag,'<Enter>',self.preview_enter)
+            self.c.tag_bind(tag,'<Leave>',self.preview_leave)
+            self.c.tag_bind(tag,'<Motion>',self.preview_motion)
             #print(f'new {x=} {y=}')
 
         self._sent.clear()
@@ -277,7 +344,7 @@ class Gallery:
         reqx = self.imgW+self.padx
         reqy = self.imgH+self.pady
 
-        w = self.on.W
+        w = self.W
 
         #print(f'***{sx=} {sy=} {reqx=} {reqy=}')
 
@@ -330,16 +397,17 @@ class Gallery:
             self._pil[c] = rimg
             y,x = yx
             tag = 'i%d'%c
-            self.on.c.itemconfig(tag, image = rimg )
-            self.on.c.moveto(tag , x , y)
-            print(f'{c=} {y=} {x=}')
+            self.c.itemconfig(tag, image = rimg )
+            self.c.moveto(tag , x , y)
+            #print(f'{c=} {y=} {x=}')
 
-        self.lastwidth=self.on.W
-        self.on.updatesregion()
+        self.lastwidth=self.W
+        self.dobbox()
 
     def Threadload(self):
         #print('Threadload, Current Thread',threading.currentThread())
         threading.Thread(target=self.load,args=tuple()).start()
+        #self.load()
 
 
     #loadNamesFromList
@@ -349,13 +417,15 @@ class Gallery:
             return
 
         self.count = self._dict['_f_count']
-        self.progress.Variable.set(0)
-        self.progress.config(max=self.count)
-        show(self.progress,'pack')
+        self.Pvar.set(0)
+        self.Progress.config(max=self.count)
+        self.ifshow(self.Progress,0)
 
-        #print(f'~~~ {self.count} \n')
         coords = self.getcoords()
         merge = zip(coords,self._dict['_f_id2'].items(),self._dict['_f_id'].values() )
+
+
+
         for yx,cp,n in merge:
             y,x = yx
             c,p = cp
@@ -366,50 +436,51 @@ class Gallery:
             self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
 
             tag = 'i%d'%c
-            self.on.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
+            self.c.create_image(x, y, anchor ='nw', image = self.objimgtk[c],tag= tag)
 
-            self.on.c.tag_bind(tag,'<ButtonPress>',self.select)
-            self.on.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
+            self.c.tag_bind(tag,'<ButtonPress>',self.select)
+            self.c.tag_bind(tag, '<Double-ButtonPress>',self.view_show)
 
-            self.on.c.tag_bind(tag,'<Enter>',self.preview_enter)
-            self.on.c.tag_bind(tag,'<Leave>',self.preview_leave)
-            self.on.c.tag_bind(tag,'<Motion>',self.preview_motion)
+            self.c.tag_bind(tag,'<Enter>',self.preview_enter)
+            self.c.tag_bind(tag,'<Leave>',self.preview_leave)
+            self.c.tag_bind(tag,'<Motion>',self.preview_motion)
 
-
-            #print(f'{c=} {y=} {x=}')
-
-            self.progress.step()
+            self.Progress.step()
 
         self.run = 1
-        hide(self.progress,'pack')
-        self.lastwidth=self.on.W
-        self.lastheight=self.on.H
-        self.on.updatesregion()
+        self.ifshow(self.Progress,0)
+        self.lastwidth=self.W
+        self.lastheight=self.H
+        #self.on.updatesregion()
 
-        self.image_w,self.image_h = self.objpil[0].size
+        if self.objpil:
+            self.image_w,self.image_h = self.objpil[0].size
+            self.scale_ifshow(1)
+        else:
+            self.scale_ifshow(0)
+            self.image_w,self.image_h = (1,1)
+
         self.preview_init()
-        self.Scale.Var.set(self.thumbW)
+        self.Svar.set(self.thumbW)
         self.scale_command(self.thumbW)
-        self.Scale.s.config(to = self.image_w)
-        show(self.Scale,'pack')
+        self.Scale.config(to = self.image_w)
+
         self.update_labelframe_text()
         #print('\nEND\n')
 
     def update_labelframe_text(self, u=1):
-        parent = self.on.master
-        old = parent.cget('text').split()
+        old = self.cget('text').split()
         if '|' in old:
             old.pop(0)
 
         old = ['%d'%self.count] + old[:2] + ['| %d selected item(s)'%self.count_selected]
         #print(f'{old = }')
-        parent.config(text = ' '.join(old))
+        self.config(text = ' '.join(old))
         if u:
-            self.on.updatesregion()
+            self.dobbox()
 
     def get_labelframe_text(self):
-        parent = self.on.master
-        old = parent.cget('text').split()
+        old = self.cget('text').split()
         if '|' in old:
             old.pop(0)
 
@@ -424,15 +495,15 @@ class Gallery:
             self.deselect()
         #
         iall = e.widget.find_withtag("current")
-        tall = [self.on.c.gettags(i) for i in iall]
+        tall = [self.c.gettags(i) for i in iall]
         s = [i for i,t in zip(iall,tall) if 'select' in t]
         img = [t[0] for i,t in zip(iall,tall) if i not in s][0]
 
 
         #print(f'{iall=} {tall=} {s=} {img=}')
         if not self.s_free:
-            self.s_id = self.on.c.create_rectangle(0, 0,self.imgW,self.imgH, fill = BLUE,outline='', stipple = 'gray50',tag='select',width = 0, state = 'normal')
-            self.on.c.tag_bind(self.s_id,'<Double-ButtonPress>',self.view_show)
+            self.s_id = self.c.create_rectangle(0, 0,self.imgW,self.imgH, fill = BLUE,outline='', stipple = 'gray50',tag='select',width = 0, state = 'normal')
+            self.c.tag_bind(self.s_id,'<Double-ButtonPress>',self.view_show)
             self.s_free.append(self.s_id)
 
         self.s_id = self.s_free.pop(-1)
@@ -441,24 +512,46 @@ class Gallery:
         self.s_uu[self.s_id]=int(img[1:])
 
 
-        x , y = self.on.c.coords(img)
-        self.on.c.coords(self.s_id , [ x , y , x+self.imgW , y+self.imgH ] )
-        self.on.c.itemconfig(id,state='normal')
+        x , y = self.c.coords(img)
+        self.c.coords(self.s_id , [ x , y , x+self.imgW , y+self.imgH ] )
+        self.c.itemconfig(id,state='normal')
 
         self.count_selected = len(self.s_used)
         self.update_labelframe_text()
 
     def deselect(self):
         for s in self.s_used:
-            self.on.c.itemconfig(s,state='hidden')
+            self.c.itemconfig(s,state='hidden')
             self.s_u[s]=None
         self.s_used.clear()
         self.s_id = None
         self.count_selected = 0
         self.update_labelframe_text()
 
-    def get_selected_imgs(self):
-        return [self.s_uu[s] for s in self.s_used]
+    def get_selected_imgs(self, pils = 0 , names = 0 , paths = 0):
+        cs = [self.s_uu[s] for s in self.s_used]
+
+        nest=0
+        ret = []
+        if pils:
+            ret += [[self.objpil[i] for i in cs]]
+            nest+=1
+        if names:
+            ret += [[ self._dict['_f_id'][c] for c in cs] ]
+            nest+=1
+        if paths:
+            ret += [[ self._dict['_f_id2'][c] for c in cs] ]
+            nest+=1
+
+        if nest < 2:
+            if nest:
+                return ret[0]
+            else:
+                return []
+
+        return ret
+
+
 
     def scale_start(self,e):
         self.Scale.start = 1
@@ -466,7 +559,7 @@ class Gallery:
     def scale_end(self,e):
         if not self.Scale.start:
             return
-        val = self.Scale.Var.get()
+        val = self.Svar.get()
         val = int(float(val))
         #print (f'{val = }')
         self.scale_resize(val)
@@ -474,10 +567,10 @@ class Gallery:
 
     def scale_command(self,val):
         val = int(float(val))
-        self.Scale.lVar.set(value = val)
+        self.SLvar.set(value = val)
 
     def scale_resize(self,val):
-        self.Scale.lVar.set(value = val)
+        self.SLvar.set(value = val)
 
         self.imgW = val
         self.imgH = val
@@ -500,7 +593,7 @@ class Gallery:
         self.Preview_pad = int(ratioDiv2 * ratio)
         self.Preview_imgPadX , self.Preview_imgPadX = int(self.Preview_pad/2) , int(self.Preview_pad/2)
 
-        self.on.c.create_line(0,0,ratio,0,ratio,ratio,0,ratio,0,0,fill='white',tag='small',state='hidden')
+        self.c.create_line(0,0,ratio,0,ratio,ratio,0,ratio,0,0,fill='white',tag='small',state='hidden')
         # artificial padding
         self.Preview.c.create_rectangle(0,0, self.Preview_pad + self.image_w , self.Preview_pad + self.image_w , outline = "")
 
@@ -521,16 +614,16 @@ class Gallery:
         self.Preview_ratioDiv2 = self.Preview_ratio / 2
 
 
-        #x , y  , _ , _ = self.on.c.coords()
-        self.on.c.coords('small',[0,0,ratio,0,ratio,ratio,0,ratio,0,0])
+        #x , y  , _ , _ = self.c.coords()
+        self.c.coords('small',[0,0,ratio,0,ratio,ratio,0,ratio,0,0])
     def preview_enter(self,e):
 
-        i = self.on.c.find_withtag('current')[0]
-        self.Current_tag = self.on.c.gettags(i)[0]
+        i = self.c.find_withtag('current')[0]
+        self.Current_tag = self.c.gettags(i)[0]
 
         tagN = int(self.Current_tag[1:])
 
-        #self.on.c.itemconfig('small',state='normal') # moved to preview_motion
+        #self.c.itemconfig('small',state='normal') # moved to preview_motion
         #print(f'ENTER {self.Current_tag = }')
 
         w = min(main.winfo_height() - self.Preview_yPlace , get_left_pane_width())
@@ -557,17 +650,17 @@ class Gallery:
 
         main.update()
 
-        self.on.c.itemconfig('small',state='hidden')
+        self.c.itemconfig('small',state='hidden')
 
     def preview_leave_2(self):
-        self.on.c.itemconfig('small',state='hidden')
+        self.c.itemconfig('small',state='hidden')
 
     def preview_motion(self,e):
 
         w = self.Preview_ratioDiv2
 
-        cx,cy = self.on.c.canvasx(0), self.on.c.canvasy(0)
-        tx,ty = self.on.c.coords(self.Current_tag)
+        cx,cy = self.c.canvasx(0), self.c.canvasy(0)
+        tx,ty = self.c.coords(self.Current_tag)
 
         x = e.x - (tx - cx)
         y = e.y - (ty - cy)
@@ -576,10 +669,10 @@ class Gallery:
         #fx , fy = (e.x - self.Preview_ix) / self.imgW , (iy - e.y) / self.imgH
         #fx , fy = (e.x + (e.x < self.r1x)*(-w) + (e.x > self.r2x)*(w) ) / self.imgW , (e.y-w) / self.thumbH
 
-        self.on.c.itemconfig('small',state='normal')
-        self.on.c.moveto('small', (cx + e.x) - w , (cy + e.y) - w )
+        self.c.itemconfig('small',state='normal')
+        self.c.moveto('small', (cx + e.x) - w , (cy + e.y) - w )
 
-        #self.on.c.moveto()
+        #self.c.moveto()
         #print(f'M {e.x = } {e.y = } {x = } {y = } {e.x-w = } {e.y-w = }')
         #print(f'M {ty-cy = } {e.x = } {e.y = } {tx = } {ty = } {x = } {y = }')
 
@@ -588,35 +681,9 @@ class Gallery:
 
     def view_show(self, e):
         #print(f'+++{self.s_list=}')
-        View.lo = 0
-        View.at = len(self.s_used)-1
-        View.hi = View.at
+        p,n = self.get_selected_imgs(pils=1,names=1)
+        view = View(img0_list =  p, names = n)
 
-        cs=self.get_selected_imgs()
-        View.titles = [ self._dict['_f_id'][c] for c in cs]
-        View.img0_list = [self.objpil[c] for c in cs]
-        View.img = View.img0_list[View.at]
-
-
-        View.W , View.H = View.img.size
-        View.iW , View.iH = View.W , View.H #current user-set width and height
-
-        View_setImg()
-
-        if View.doMapBinded:
-            pass
-        else:
-            View_scroll.bind('<Map>', View_onMap)
-
-        if View.at > 0:
-            state = 'normal'
-        else:
-            state = 'disabled'
-
-        View_tbar_back.config(state = state )
-        View_tbar_next.config(state = state )
-
-        _showToplevel(View)
 
 # disable the right label widget if no path is set
 class LabelAB(tk.Frame):
@@ -654,7 +721,7 @@ class Path:
             raise('gallery=... is empty')
             return
         #uncategorized, validation,training galleries
-        self.ug, self.vg, self.tg  = gallery
+        self.ug, self.vg, self.tg, self.testg  = gallery
 
         self.yes='\u2714'
         self.no='\u274c'
@@ -667,17 +734,16 @@ class Path:
             self.setpath(path)
         self.tree.bind('<<TreeviewSelect>>',self.rowselected)
     def init(self):
-        self.cols=[0,1,2,3]
+        self.cols=[0,1,2,3,4]
         self.templ=['']*len(self.cols)
         self.tree.config(columns=self.cols)
         self.tree.column('#0',width=40,stretch=1)
-        for i,c in zip('Classes-Has Uncategorized Images-Has Validation-Has Training'.split('-'),self.cols):
+        test = tk.Label(main)
+        font = tk.font.Font(font=test.cget('font'))
+        for i,c,anchor in zip('Classes-Uncategorized-Validation-Training-Testing'.split('-'),self.cols,'w center center center center'.split()):
             self.tree.heading(c,anchor='center',text=i)
-            self.tree.column(c,minwidth=10,width=70,anchor='center')
-            #print(c)
-        #self.tree.column(1,anchor='w')
-        self.tree.column(0,anchor='w')
-        self.tree.heading(0,anchor='w')
+            self.tree.column(c,minwidth=1,width=font.measure(i),anchor=anchor,stretch=1)
+
         #print(f'Status {self.missingboth=} \n {self.havet=} \n {self.havev=}')
 
         #configure tags
@@ -704,7 +770,11 @@ class Path:
                     '_t_id':dict(),
                     '_t_id2':dict(),
                     '_t_count':0,
-                    'value':[self.no,self.no,self.no]} #values count (4)
+                    '_test':'',
+                    '_test_id':dict(),
+                    '_test_id2':dict(),
+                    '_test_count':0,
+                    'value':[self.no,self.no,self.no,self.no]} #values count (4)
 
             _lam2 = lambda x,base = _p2: os.path.join(base,x)
             _len_generic = len(_f2)
@@ -720,6 +790,7 @@ class Path:
 
             _v_n=(list(filter(lambda x: x.lower() == 'validation',_d2)))
             _t_n=(list(filter(lambda x: x.lower() == 'training',_d2)))
+            _test_n = ( list(filter(lambda x: x.lower() == 'testing',_d2)) )[0:1]
             if _v_n:
                 _v_n = _v_n[0] #incase of different spelling variations
                 _dict[d]['_v']= ( _v:=os.path.join(_p2,_v_n) )
@@ -746,6 +817,21 @@ class Path:
                 tmp[2] = _len_generic
                 _dict[d]['value'] = tmp
 
+            if _test_n:
+                _dict[d]['_test']= ( long:=os.path.join(_p2,_test_n) )
+                _,_, f = next(os.walk(long))
+                f = list( filter(_lam,f) )
+                longf = list( map(lambda x, base = long : os.path.join(base,x),f) )
+                xlen = len(f)
+                xrang = range(xlen)
+                _dict[d]['_test_id'] = dict( zip(xrang,f) )
+                _dict[d]['_test_id2'] = dict( zip(xrang,longf) )
+                _dict[d]['_test_count'] = xlen
+                tmp= _dict[d]['value']
+                tmp[3] = xlen
+                _dict[d]['value'] = tmp
+
+
         self.all = _dict
         #print(f'{self.all =}')
         self.updatetree()
@@ -757,7 +843,7 @@ class Path:
             v = self.all[k]
             templ=['']
             self.tree.insert('','end',iid=k, values = [k]+v['value'])
-            for category,title in zip('_f_id _v_id _t_id'.split(),['{Uncategorized Images}','{Validation Images}','{Training Images}']):
+            for category,title in zip('_f_id _v_id _t_id _test_id'.split(),['{Uncategorized Images}','{Validation Images}','{Training Images}','{Testing Images}']):
                 _dict = v[category]
 
                 if _dict:
@@ -789,39 +875,12 @@ class Path:
         self.ug._dict = dict(_p = _dict['_p'], _f_id = _dict['_f_id'] , _f_id2 = _dict['_f_id2'] , _f_count = _dict['_f_count'] )
         self.tg._dict = dict(_p = _dict['_t'], _f_id = _dict['_t_id'] , _f_id2 = _dict['_t_id2'] , _f_count = _dict['_t_count'] )
         self.vg._dict = dict(_p = _dict['_v'], _f_id = _dict['_v_id'] , _f_id2 = _dict['_v_id2'] , _f_count = _dict['_v_count'] )
+        self.testg._dict = dict(_p = _dict['_test'], _f_id = _dict['_test_id'] , _f_id2 = _dict['_test_id2'] , _f_count = _dict['_test_count'] )
 
         self.ug.Threadload()
         self.tg.Threadload()
         self.vg.Threadload()
-
-
-class Collapse:
-    def __init__(self,geom,*tobe): # frames; to be collapsed
-
-        self.all = {i:0 for i in tobe}
-        self.geom=geom
-        self.current = None
-
-        call0 = getattr(tk,"%s"%(self.geom.capitalize()))
-        call1 = getattr(call0,"%s_info"%(self.geom))
-        self.call = getattr(call0,"%s_configure"%(self.geom))
-
-
-        self.id=dict()
-        self.config={i:call1(i) for i in self.all}
-
-    def pressed(self,widget):
-        self.all[widget] = (v:=not self.all[widget])
-
-        self.current = v if v else None
-
-        if v:
-            for k,val in self.config.items():
-                self.call(k,{'relheight':0})
-            self.call(widget,{'relheight':0.9,'rely':0.1})
-        else:
-            for k,val in self.config.items():
-                self.call(k,val)
+        self.testg.Threadload()
 
 
 def _center(w,width=None,h=None):
@@ -1025,7 +1084,7 @@ class Slide(ttk.Frame):
             l,ll = self.id1[j] , self.under[j]
             l.grid(row=0,column=j,sticky='we')
             ll.grid(row=1,column=j,sticky='we')
-
+            self.grid_columnconfigure('all',weight=1,uniform=1)
 
     def myadd(self,tup,append=1):
 
@@ -1580,9 +1639,10 @@ class Frame1Model:
         self.c.config(scrollregion=self.c.bbox('all'))
         self.c.itemconfig('cf', width = e.width)
 
-
+#--------------------------------------------------------------------------------------------#
 this = Frame1Model(frame1)
 #--------------------------------------------------------------------------------------------#
+
 
 #/frame0/exe entry
 #/frame0/exe button
@@ -1636,149 +1696,171 @@ right.bind('<Map>',centerPane)
 
 #--------------------------------------------------------------------------------------------#
 # a mini-image view toplevel window
-View = tk.Toplevel(main)
-_hideToplevel(View)
-_alterToplevelClose(View)
+
 
 #                                 Toolbar
-View_tbar = ttk.Frame(View)
-View_tbar.pack(side = TOP, fill = X)
+class View(tk.Toplevel):
+    def __init__(self,**kw):
+        self.img0_list = kw.pop('img0_list')
+        self.names = kw.pop('names')
+        super().__init__(**kw)
+        self.count = len(self.img0_list)
+        self.at = self.count - 1
+        self.title(self.names[self.at])
+        self.tbar = ttk.Frame(self)
+        self.tbar.pack(side = TOP, fill = X)
 
-View_tbar_first = ttk.Frame(View_tbar)
-View_tbar_first.pack(side = TOP, expand = 1, fill = X)
+        self.tbar_first = ttk.Frame(self.tbar)
+        self.tbar_first.pack(side = TOP, expand = 1, fill = X)
 
-View_tbar_first_count = ttk.Label(View_tbar_first , text = '' , anchor = 'w')
-View_tbar_first_count.pack(side = LEFT, fill = X)
+        self.tbar_first_count = ttk.Label(self.tbar_first , text = '' , anchor = 'w')
+        self.tbar_first_count.pack(side = LEFT, fill = X)
 
-View_tbar_first_sbv = ttk.Separator(View_tbar_first , orient = 'vertical')
-View_tbar_first_sbv.pack(side = LEFT, fill = Y)
+        self.tbar_first_sbv = ttk.Separator(self.tbar_first , orient = 'vertical')
+        self.tbar_first_sbv.pack(side = LEFT, fill = Y)
 
-View_tbar_first_banner = ttk.Label(View_tbar_first , text = '' , anchor = 'center')
-View_tbar_first_banner.pack(side = TOP, expand = 0, fill = NONE)
-
-
-View_tbar_sbh  = ttk.Separator(View_tbar , orient = 'horizontal')
-View_tbar_sbh.pack(side = TOP, fill = X)
-
-View_scroll = ScrollableCanvas(View)
-View_scroll.pack(side = TOP , expand = 1 , fill = BOTH)
-
-View_scroll.config(highlightbackground = GREEN , highlightthickness = 2)
-
-View_tbar_back = ttk.Button(View_tbar, text = 'Previous' , command = lambda : View_back() )
-View_tbar_back.pack(side = LEFT)
-
-View_tbar_next = ttk.Button(View_tbar, text = 'Next', command = lambda : View_next() )
-View_tbar_next.pack(side = LEFT, padx = [0 , 20])
-
-View_tbar_full = ttk.Button(View_tbar, text = 'Reset Size')
-View_tbar_full.pack(side = LEFT)
-
-View_tbar_fit = tk.Checkbutton(View_tbar, text = 'Fit to window' , indicatoron = 0)
-View_tbar_fit.pack(side = LEFT, padx = [0 , 20])
-
-View_tbar_zoomin = ttk.Button(View_tbar, text = 'Zoom In' , command = lambda: View_zoomOnClick(1))
-View_tbar_zoomin.pack(side = LEFT)
-
-View_tbar_zoomout = ttk.Button(View_tbar, text = 'Zoom Out' , command = lambda: View_zoomOnClick(-1))
-View_tbar_zoomout.pack(side = LEFT)
-
-View_scroll.c.create_image(0,0 , tag = 'img')
-
-View.doMapBinded = 1
-
-def View_setImg(resize=1):
-
-    View.title(View.titles[View.at])
-    #
-    if resize:
-        View.img = View.img0_list[View.at].resize((View.iW,View.iH))
-
-    View.imgtk = ImageTk.PhotoImage(image = View.img)
-    View_scroll.c.itemconfig('img' , image = View.imgtk)
-    w , h = View.img.size
-    View_tbar_first_banner['text'] = f'({w/View.W*100:.2f}%) {w} x {h} Pixels'
-    View_tbar_first_count['text'] = '{} / {}'.format(View.at+1 , View.hi+1)
-    View_scroll.updatesregion()
-
-def View_next():
-    #print(f'next {View.at=}')
-    if View.at < View.hi :
-        View.at += 1
-        View_setImg()
-
-def View_back():
-    #print(f'back {View.at=}')
-    if View.at > View.lo :
-        View.at += -1
-        View_setImg()
+        self.tbar_first_banner = ttk.Label(self.tbar_first , text = '' , anchor = 'center')
+        self.tbar_first_banner.pack(side = TOP, expand = 0, fill = NONE)
 
 
-def View_onMap(e,*r):
-    print(f'{ r = } { e.widget = }')
-    return
-    e.widget.c.xview_moveto(0.0)
-    e.widget.c.yview_moveto(0.0)
+        self.tbar_sbh  = ttk.Separator(self.tbar , orient = 'horizontal')
+        self.tbar_sbh.pack(side = TOP, fill = X)
+
+        self.scroll = ScrollableCanvas(self)
+        self.scroll.pack(side = TOP , expand = 1 , fill = BOTH)
+
+        self.scroll.config(highlightbackground = GREEN , highlightthickness = 2)
+
+        s = ['disabled','normal'][self.count > 1]
+
+        self.tbar_back = ttk.Button(self.tbar, text = 'Previous' , command = self.back , state = s )
+        self.tbar_back.pack(side = LEFT)
+
+        self.tbar_next = ttk.Button(self.tbar, text = 'Next', command = self.next , state = s)
+        self.tbar_next.pack(side = LEFT, padx = [0 , 20])
+
+        self.tbar_full = ttk.Button(self.tbar, text = 'Reset Size')
+        self.tbar_full.pack(side = LEFT)
+
+        self.tbar_fit = tk.Checkbutton(self.tbar, text = 'Fit to window' , indicatoron = 0)
+        self.tbar_fit.pack(side = LEFT, padx = [0 , 20])
+
+        self.tbar_zoomin = ttk.Button(self.tbar, text = 'Zoom In' , command = lambda: self.zoomOnClick(1))
+        self.tbar_zoomin.pack(side = LEFT)
+
+        self.tbar_zoomout = ttk.Button(self.tbar, text = 'Zoom Out' , command = lambda: self.zoomOnClick(-1))
+        self.tbar_zoomout.pack(side = LEFT)
+
+        self.scroll.c.create_image(0,0 , tag = 'img')
+
+        self.doMapBinded = 1
+
+        self.tbar_fit['command'] = self.fitOnClick
+        self.tbar_full['command'] = self.fullOnClick
+
+        self.lo = 0
+        self.hi = self.at
+        self.img = self.img0_list[self.at]
+
+        self.scroll.bind('<Map>', self.onMap)
+
+        self.W , self.H = self.img.size
+        self.iW , self.iH = self.W , self.H #current user-set width and height
+
+        self.setimg()
+
+    def setimg(self,resize=1):
+
+        self.title(self.names[self.at])
+        #
+        if resize:
+            self.img = self.img0_list[self.at].resize((self.iW,self.iH))
+
+        self.imgtk = ImageTk.PhotoImage(image = self.img)
+        self.scroll.c.itemconfig('img' , image = self.imgtk)
+        w , h = self.img.size
+        self.tbar_first_banner['text'] = f'({w/self.W*100:.2f}%) {w} x {h} Pixels'
+        self.tbar_first_count['text'] = '{} / {}'.format(self.at+1 , self.hi+1)
+        self.scroll.updatesregion()
+
+    def next(self):
+        #print(f'next {self.at=}')
+        if self.at < self.hi :
+            self.at += 1
+            self.setimg()
+
+    def back(self):
+        #print(f'back {self.at=}')
+        if self.at > self.lo :
+            self.at += -1
+            self.setimg()
 
 
-def View_fitOnClick():
+    def onMap(self,e,*r):
+        #print(f'{ r = } { e.widget = }')
+        return
+        e.widget.c.xview_moveto(0.0)
+        e.widget.c.yview_moveto(0.0)
 
-    if 'fitVar' not in vars(View_tbar_fit):
-        View_tbar_fit.fitVar = tk.IntVar(value = 1)
-        View_tbar_fit['variable'] = View_tbar_fit.fitVar
 
-    v = View_tbar_fit.fitVar.get()
-    if v:
-        View_scroll.c.bind('<Configure>', View_fitResize)
-        View_scroll.c.event_generate('<Configure>')
-    else:
-        View_scroll.c.bind('<Configure>',"" )
-        #View_fullOnClick()
+    def fitOnClick(self):
 
-    #print(f'View_fitOnClick {View_tbar_fit.fitVar.get() = }')
+        if 'fitVar' not in vars(self.tbar_fit):
+            self.tbar_fit.fitVar = tk.IntVar(value = 1)
+            self.tbar_fit.config(variable = self.tbar_fit.fitVar)
 
-def View_fitResize(e):
-    cw , ch = e.widget.winfo_width() , e.widget.winfo_height()
+        v = self.tbar_fit.fitVar.get()
+        if v:
+            self.scroll.c.bind('<Configure>', self.fitResize)
+            self.scroll.c.event_generate('<Configure>')
+        else:
+            self.scroll.c.bind('<Configure>',"" )
+            #View_fullOnClick()
 
-    w , h = View.img.size
-    r = w/h
+        #print(f'View_fitOnClick {View_tbar_fit.fitVar.get() = }')
 
-    ch = r*cw
-    iw = int( ch/r )
-    ih = int( iw*r )
+    def fitResize(self,e):
+        cw , ch = e.widget.winfo_width() , e.widget.winfo_height()
 
-    #print(f'{w = } {h =} {r = } {cw =} {ch =} {iw =} {ih =} ')
-    #View.img= View.img0_list[View.at].resize((iw,ih))
-    View.iW , View.iH = iw , ih
+        w , h = self.img.size
+        r = w/h
 
-    View_setImg()
+        ch = r*cw
+        iw = int( ch/r )
+        ih = int( iw*r )
 
-    e.widget.moveto('img',0,0)
-    e.widget.xview_moveto(0.0)
-    e.widget.yview_moveto(0.0)
-    View_scroll.updatesregion()
+        #print(f'{w = } {h =} {r = } {cw =} {ch =} {iw =} {ih =} ')
+        #self.img= self.img0_list[self.at].resize((iw,ih))
+        self.iW , self.iH = iw , ih
 
-def View_fullOnClick():
+        self.setimg()
 
-    #View.img= View.img0_list[View.at] #.resize((View.W,View.H)) # assumes imgs are of same size &
-    View.iW , View.iH = View.W , View.H
+        e.widget.moveto('img',0,0)
+        e.widget.xview_moveto(0.0)
+        e.widget.yview_moveto(0.0)
+        self.scroll.updatesregion()
 
-    View_setImg()
+    def fullOnClick(self):
 
-def View_zoomOnClick(sign):
+        #self.img= self.img0_list[self.at] #.resize((self.W,self.H)) # assumes imgs are of same size &
+        self.iW , self.iH = self.W , self.H
 
-    r = sign*0.1
-    w , h = View.img.size
-    w += r*w
-    h += r*h
+        self.setimg()
 
-    w = int(w)
-    h = int(h)
+    def zoomOnClick(self,sign):
 
-    #View.img= View.img0_list[View.at].resize((w,h))
-    View.iW , View.iH = w , h
+        r = sign*0.1
+        w , h = self.img.size
+        w += r*w
+        h += r*h
 
-    View_setImg()
+        w = int(w)
+        h = int(h)
+
+        #self.img= self.img0_list[self.at].resize((w,h))
+        self.iW , self.iH = w , h
+
+        self.setimg()
 
 def Shift_start(e):
     if not e.keysym.lower().startswith('shift'):
@@ -1793,8 +1875,7 @@ def Shift_end(e):
     global SHIFT_ON
     SHIFT_ON = 0
 
-View_tbar_fit['command'] = View_fitOnClick
-View_tbar_full['command'] = View_fullOnClick
+
 
 #--------------------------------------------------------------------------------------------#
 # bind Shift key
@@ -1814,7 +1895,7 @@ main.bind('<KeyRelease>',Shift_end)
 
 main.Labelfont = tkinter.font.Font(font=banner.cget('font'))
 
-print(main.Labelfont.config(weight='bold'))
+##print(main.Labelfont.config(weight='bold'))
 #--------------------------------------------------------------------------------------------#
 
 class Allocate(tk.Toplevel):
@@ -1823,8 +1904,11 @@ class Allocate(tk.Toplevel):
         _alterToplevelClose(self)
 
         self.all = all
-        self.f = tk.Frame(self)
-
+        self.f0 = tk.Frame(self)
+        self.f = tk.Frame(self.f0)
+##        for i in all:
+##            print(f'{i=}')
+##            print()
         self.id1 = {j : g for j,g in enumerate(all) }
         self.id2 = {g: j for j,g in self.id1.items()}
         self.evar = {j : tk.StringVar() for j in self.id1 }
@@ -1833,24 +1917,25 @@ class Allocate(tk.Toplevel):
         self.cb = {j : ttk.Checkbutton(self.f, variable = self.cbvar[j] , text = f'"{g.get_labelframe_text()}"' ) for j,g in self.id1.items() }
         [cb.config(command = lambda e=self.e[j] , myvar = self.cbvar[j] : e.config(state = ['disabled','normal'][myvar.get()]) ) for j,cb in self.cb.items()]
 
-        self.f.l = ttk.Label(self.f )
-        self.f.b = ttk.Button(self.f, text = 'Allocate' , command = lambda : self.allocate())
-        self.f.cancel = ttk.Button(self.f, text = 'Cancel', command = lambda : _hideToplevel(self))
+        self.l = ttk.Label(self.f0 )
+        self.b = ttk.Button(self.f0, text = 'Allocate' , command = lambda : self.allocate())
+        self.cancel = ttk.Button(self.f0, text = 'Cancel', command = lambda : _hideToplevel(self))
 
          #
         self.lenall = len(self.all)
 
-        self.f.l.grid(row = 0, column = 0 , columnspan = 3 , sticky = 'nswe')
+
+
         self.mygrid(init=1)
-        self.f.b.grid(row = self.lenall+1, column = 0)
-        self.f.cancel.grid(row = self.lenall+1, column = 1)
+        self.f.pack(side = TOP, expand = 1 , fill = X,pady=10)
+        self.b.pack(side = LEFT, expand = 1 , fill = X,pady=10)
+        self.cancel.pack(side = RIGHT, expand = 1 , fill = X,pady=10)
 
         self.gto = None
         self.gfrom = None # current gallery from which it's called
         self.gl = ''
 
-        self.f.grid_rowconfigure('all',pad=20)
-        self.f.pack(side=TOP,expand=1,fill=BOTH)
+        self.f0.pack(side=TOP,expand=1,fill=BOTH,padx=10,pady=10)
         self.resizable(0,0)
         self.title('Partition')
 
@@ -1864,7 +1949,10 @@ class Allocate(tk.Toplevel):
                 e.grid( row = row, column = col+1 , sticky = 'nswe')
                 cb.grid_remove()
                 e.grid_remove()
-
+            self.f.grid_columnconfigure(col,weight=1,uniform=2)
+            self.f.grid_columnconfigure(col+1,weight=1,uniform=2)
+            self.f.grid_columnconfigure(col+2,weight=0,uniform=0)
+            #self.f.pack_config(padx=10)
             return
 
         for cb,e  in zip(self.cb.values() , self.e.values() ):
@@ -1876,12 +1964,15 @@ class Allocate(tk.Toplevel):
 
 
     def setlabel(self):
-        s = 'Select percentage of images to allocate\nrandomly'
+        s = 'Select percentage of images to allocate randomly'
         if self.gfrom:
             s = '%s from "%s" to:'%(s,self.gl)
-        self.f.l.config(text= s)
+        self.l.config(text= s)
 
     def myshow(self,g):
+        if not self.l.winfo_ismapped():
+            self.f0.bind('<Configure>',lambda e,this=self.l : this.config(wraplength=e.width))
+            self.l.pack(side = TOP, expand = 0 , fill = X,pady=10 , before = self.f)
         self.gfrom = g
         self.gto = {i : self.id2[i] for i in self.all if i!=g}
         self.gl = g.get_labelframe_text()
@@ -1893,216 +1984,35 @@ class Allocate(tk.Toplevel):
     def allocate(self):
         for g,j in self.gto.items():
             print(f'{self.evar[j].get()=}')
+        _hideToplevel(self)
 
 
 
 #paned/right frame/second paned window/"uncategorized" frame/
-(All:=ttk.LabelFrame(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.3)
-
-
-#---------------------------------------------------------------------------------------------------------------------------------------------------#
-
-# /"uncategized", actions menu
-uncatmenu=tk.Menu(main,tearoff=0)
-trainmenu=tk.Menu(main,tearoff=0)
-validmenu=tk.Menu(main,tearoff=0)
-
-uncatmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(All))
-trainmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Top))
-validmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Bottom))
-
-uncatmenu.add_separator()
-trainmenu.add_separator()
-validmenu.add_separator()
-
-uncatmenu_sel = tk.Menu(uncatmenu, tearoff=0)
-uncatmenu_sel.add_checkbutton(label='Unselect', command=lambda : guncat.deselect())
-uncatmenu_sel.add_separator()
-uncatmenu_sel.add_command(label='Move to', command = lambda: Moveto.show(guncat))
-
-uncatmenu.add_cascade(label='Selection',menu = uncatmenu_sel)
-trainmenu.add_checkbutton(label='Unselect', command=lambda : g01.deselect())
-validmenu.add_checkbutton(label='Unselect', command=lambda : g02.pressed())
-
-uncatmenu.add_separator()
-trainmenu.add_separator()
-validmenu.add_separator()
-
-uncatmenu.add_command(label='Partition this set', command=lambda : Main_allocate.myshow(guncat))
-#trainmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Top))
-#validmenu.add_checkbutton(label='Expand', command=lambda : coll.pressed(Bottom))
-
-
-
-
-#--------------------------------------------------------------------------------------------#
-#paned/right frame/second paned window/"uncategorized" frame/top 'toolbar'
-(uncattop := ttk.Frame(All)).pack(side=TOP , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"uncategorized" frame/actions button
-(uncatbutton:=ttk.Menubutton(uncattop,text='Actions',menu=uncatmenu)).pack(side=RIGHT , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"uncategorized" frame/thumbnail size scale
-(uncatscaleF := ttk.Frame(uncattop)).pack(side=LEFT , expand = 0, fill=X, before = uncatbutton)
-
-uncatscaleF.Var = tk.StringVar(value='')
-uncatscaleF.lVar = tk.StringVar(value='')
-
-uncatscaleF.s = ttk.Scale(uncatscaleF,variable=uncatscaleF.Var)
-uncatscaleF.s.config(from_=1)
-
-
-uncatscaleF.l1 = ttk.Label(uncatscaleF,textvariable=uncatscaleF.lVar)
-uncatscaleF.x = ttk.Label(uncatscaleF,text='x')
-uncatscaleF.l2 = ttk.Label(uncatscaleF,textvariable=uncatscaleF.lVar)
-
-uncatscaleF.s.pack(side=LEFT , expand = 0, fill=X)
-uncatscaleF.l1.pack(side=LEFT , expand = 0, fill=X)
-uncatscaleF.x.pack(side=LEFT , expand = 0, fill=X)
-uncatscaleF.l2.pack(side=LEFT , expand = 0, fill=X)
-
-hide(uncatscaleF,'pack')
-
-#--------------------------------------------------------------------------------------------#
-
-
-#paned/right frame/second paned window/"uncategorized" frame/scroll canvas
-(uncatscroll:=ScrollableCanvas(All)).pack(side=TOP , expand = 1, fill=BOTH)
-
-
-
-#--------------------------------------------------------------------------------------------#
-# paned/right frame/"uncategorized" frame/progress bar
-(uncatprog:=ttk.Progressbar(All,orient = 'horizontal')).pack(side=TOP , expand = 0, fill=X,before = uncatscroll)
-uncatprog.Variable = tk.IntVar() #value =55
-uncatprog.config(variable=uncatprog.Variable)
-hide(uncatprog,'pack', before = uncatscroll)
-
-#--------------------------------------------------------------------------------------------#
-guncat = Gallery(on=uncatscroll,progress=uncatprog,scale=uncatscaleF)
-#--------------------------------------------------------------------------------------------#
+(All:=Gallery(right,text='Uncategorized Images')).place(rely=0.1 , x = 0, relwidth=1, relheight=0.225)
 
 
 #paned/right frame/top frame
-(Top:=ttk.LabelFrame(right,text='Training Images')).place(rely=0.4 , x = 0, relwidth=1, relheight=0.3)
+(Train:=Gallery(right,text='Training Images')).place(rely=0.325 , x = 0, relwidth=1, relheight=0.225)
 
-#--------------------------------------------------------------------------------------------#
-#paned/right frame/second paned window/"train" frame/top 'toolbar'
-(traintop := ttk.Frame(Top)).pack(side=TOP , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"train" frame/actions button
-(trainbutton:=ttk.Menubutton(traintop,text='Actions',menu=trainmenu)).pack(side=RIGHT , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"train" frame/thumbnail size scale
-(g01scaleF := ttk.Frame(traintop)).pack(side=LEFT , expand = 0, fill=X, before = trainbutton)
-
-g01scaleF.Var = tk.StringVar(value='')
-g01scaleF.lVar = tk.StringVar(value='')
-
-g01scaleF.s = ttk.Scale(g01scaleF,variable=g01scaleF.Var)
-g01scaleF.s.config(from_=1)
-
-
-g01scaleF.l1 = ttk.Label(g01scaleF,textvariable=g01scaleF.lVar)
-g01scaleF.x = ttk.Label(g01scaleF,text='x')
-g01scaleF.l2 = ttk.Label(g01scaleF,textvariable=g01scaleF.lVar)
-
-g01scaleF.s.pack(side=LEFT , expand = 0, fill=X)
-g01scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
-g01scaleF.x.pack(side=LEFT , expand = 0, fill=X)
-g01scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
-
-hide(g01scaleF,'pack')
-
-#--------------------------------------------------------------------------------------------#
-
-#paned/right frame/top frame/frame01/train ScrollableCanvas
-(scrollfor01 := ScrollableCanvas(Top)).pack(expand = 1, fill = BOTH)
-
-#--------------------------------------------------------------------------------------------#
-
-#paned/right frame/top frame/training progress bar
-
-(trainprog := ttk.Progressbar(Top,orient = 'horizontal')).pack(expand = 1,side = TOP, fill = X, before = scrollfor01)
-trainprog.Variable = tk.IntVar() #value =55
-trainprog.config(variable=trainprog.Variable)
-hide(trainprog,'pack', before = scrollfor01)
-
-#--------------------------------------------------------------------------------------------#
-g01 = Gallery(on=scrollfor01,progress=trainprog,scale = g01scaleF)
-#--------------------------------------------------------------------------------------------#
 
 #paned/right frame/top frame/frame00/parent path LabelAB
-(frame00 := LabelAB(Top)).pack(expand = 1,side = TOP, fill = X)
+#(frame00 := LabelAB(Train)).pack(expand = 1,side = TOP, fill = X)
 
 
 #--------------------------------------------------------------------------------------------#
 
 #paned/right frame/bottom frame
-(Bottom:=ttk.LabelFrame(right,text='Validation Images')).place(rely=0.7 , x = 0, relwidth=1, relheight=0.3)
+(Valid:=Gallery(right,text='Validation Images')).place(rely=0.55 , x = 0, relwidth=1, relheight=0.225)
 
-#--------------------------------------------------------------------------------------------#
-#paned/right frame/second paned window/"train" frame/top 'toolbar'
-(validtop := ttk.Frame(Bottom)).pack(side=TOP , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"valid" frame/actions button
-(validbutton:=ttk.Menubutton(validtop,text='Actions',menu=validmenu)).pack(side=RIGHT , expand = 0, fill=X)
-
-#--------------------------------------------------------------------------------------------#
-
-# paned/right frame/"valid" frame/thumbnail size scale
-(g02scaleF := ttk.Frame(validtop)).pack(side=LEFT , expand = 0, fill=X, before = validbutton)
-
-g02scaleF.Var = tk.StringVar(value='')
-g02scaleF.lVar = tk.StringVar(value='')
-
-g02scaleF.s = ttk.Scale(g02scaleF,variable=g02scaleF.Var)
-g02scaleF.s.config(from_=1)
-
-
-g02scaleF.l1 = ttk.Label(g02scaleF,textvariable=g02scaleF.lVar)
-g02scaleF.x = ttk.Label(g02scaleF,text='x')
-g02scaleF.l2 = ttk.Label(g02scaleF,textvariable=g02scaleF.lVar)
-
-g02scaleF.s.pack(side=LEFT , expand = 0, fill=X)
-g02scaleF.l1.pack(side=LEFT , expand = 0, fill=X)
-g02scaleF.x.pack(side=LEFT , expand = 0, fill=X)
-g02scaleF.l2.pack(side=LEFT , expand = 0, fill=X)
-
-hide(g02scaleF,'pack')
-
-#--------------------------------------------------------------------------------------------#
-
-#paned/right frame/bottom frame/validation ScrollableCanvas
-(scrollfor02 := ScrollableCanvas(Bottom)).pack(expand = 1,side = TOP, fill = BOTH)
-
-#--------------------------------------------------------------------------------------------#
-validprogvar = tk.IntVar() #value =55
-# paned/right frame/"validation" frame/progress bar
-(validprog:=ttk.Progressbar(Bottom,orient = 'horizontal',variable = validprogvar)).pack(side=TOP , expand = 0, fill=X, before = scrollfor02)
-validprog.Variable = tk.IntVar() #value =55
-validprog.config(variable=validprog.Variable)
-hide(validprog,'pack', before = scrollfor02)
-
-#--------------------------------------------------------------------------------------------#
-g02 = Gallery(on=scrollfor02,progress=validprog, scale = g02scaleF)
-#--------------------------------------------------------------------------------------------#
+#paned/right frame/top frame
+(Test:=Gallery(right,text='Testing Images')).place(rely=0.775 , x = 0, relwidth=1, relheight=0.225)
 
 
 #chosen path assesor
-Tpath=Path(tree=tree,gallery=[guncat,g01,g02])
+Tpath=Path(tree=tree,gallery=[All,Train,Valid,Test])
 
-Main_allocate = Allocate([guncat,g01,g02])
+Main_allocate = Allocate([All,Train,Valid,Test])
 
 """Tpath.mytop = tk.Toplevel(main)
 
@@ -2131,9 +2041,6 @@ Tpath.myf.grid_rowconfigure(1 , uniform = 1 , weight = 1)
 Tpath.myf.sc.bind('<Configure>',lambda e: e.widget.c.config(scrollregion = e.widget.c.bbox('all') ))"""
 #--------------------------------------------------------------------------------------------#
 
-coll = Collapse('place',All,Top,Bottom)
-expandvar = {i:tk.IntVar() for i in [uncatmenu,trainmenu,validmenu]}
-[i.entryconfig(0,variable=v) for i,v in expandvar.items()]
 
 class To(tk.Toplevel):
     def __init__(self,a,parent=main):
@@ -2162,10 +2069,11 @@ class To(tk.Toplevel):
         self.f.b = ttk.Button(self.f , text = 'Move', command = lambda : self.move())
         self.f.cancel = ttk.Button(self.f , text = 'Cancel',command= lambda: _hideToplevel(self))
 
-        self.f.b.grid(row = count , column = 0)
-        self.f.cancel.grid(row = count , column = 1)
-        self.f.grid_rowconfigure('all',pad=20)
-
+        self.f.b.grid(row = count , column = 0 , sticky = 'we')
+        self.f.cancel.grid(row = count , column = 1 , sticky = 'we')
+        self.f.grid_rowconfigure('all',pad=10)
+        self.f.grid_columnconfigure([0,1],uniform=10,weight=1)
+        self.f.grid_rowconfigure(count,pad=10)
     def show(self,sentg):
         self.g=sentg
         if not sentg.s_used:
@@ -2187,7 +2095,7 @@ class To(tk.Toplevel):
 
 
 main.title('A TF Classifier')
-Moveto = To([guncat,g01,g02])
+Moveto = To([All,Train,Valid,Test])
 
 #zerodo.grid_columnconfigure('all',weight=1,uniform='default')
 #zerodo.grid_rowconfigure('all',weight=1,uniform='default')
