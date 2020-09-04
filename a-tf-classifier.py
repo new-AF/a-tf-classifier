@@ -19,7 +19,8 @@ from PIL import Image
 from PIL import ImageTk
 from PIL import ImageOps
 
-
+import tensorflow as tf
+import numpy as np
 # up chevron icon
 # Font Awesome by Dave Gandy - https://fortawesome.github.com/Font-Awesome
 UP = Image.open('up.png').resize((20,20))
@@ -192,34 +193,35 @@ class Gallery(ttk.Labelframe):
 
     def init_menu(self):
         self.M = m = tk.Menu(main,tearoff=0)
-        mm = tk.Menu(m,tearoff=0)
+        self.MM = mm = tk.Menu(m,tearoff=0)
         self.Mb=ttk.Menubutton(self,text='Actions',menu=m)
         mm.add_checkbutton(label='Unselect', command=lambda : self.deselect())
         mm.add_separator()
-        mm.add_command(label='Move to', command = lambda : Moveto.show(self))
+        mm.add_command(label='Move to')
         m.add_checkbutton(label='Expand')
         m.add_separator()
         m.add_cascade(label='Selection',menu = mm)
         m.add_separator()
-        m.add_command(label='Partition this set', command=lambda : Main_allocate.myshow(self))
+        m.add_command(label='Partition this set')
 
 
     def init_grid(self):
-        self.Scale.grid(row=0,column=0,sticky='nswe')
-        self.Scale.L.grid(row=0,column=1,sticky='w')
-        self.Scale.x.grid(row=0,column=2,sticky='w')
-        self.Scale.R.grid(row=0,column=3,sticky='w')
-        self.Mb.grid(row=0,column=4,sticky='e')
-        self.sbv.grid(row=0,column=5,sticky='ns',rowspan=3)
-        self.sbh.grid(row=2,column=0,sticky='we',columnspan=6)
-        self.c.grid(row=1,column=0,sticky='nswe',columnspan=5)
-        self.Progress.grid(row=3,column=0,columnspan=6,sticky='we')
+        self.Scale.grid(row=1,column=0,sticky='nswe')
+        self.Scale.L.grid(row=1,column=1,sticky='w')
+        self.Scale.x.grid(row=1,column=2,sticky='w')
+        self.Scale.R.grid(row=1,column=3,sticky='w')
+        self.Mb.grid(row=1,column=4,sticky='e')
+        self.sbv.grid(row=1,column=5,sticky='ns',rowspan=3)
+        self.sbh.grid(row=3,column=0,sticky='we',columnspan=6)
+        self.c.grid(row=2,column=0,sticky='nswe',columnspan=5)
+        self.Progress.grid(row=0,column=0,columnspan=6,sticky='we')
 
         for i in range(6):
             self.grid_columnconfigure(i,weight=0,uniform=i)
         self.grid_columnconfigure(4,weight=1,uniform='4i')
-        self.grid_rowconfigure(0,weight=0,uniform=0)
-        self.grid_rowconfigure(1,weight=1,uniform=1)
+        self.grid_rowconfigure(0,weight=0,uniform='0')
+        self.grid_rowconfigure(1,weight=0,uniform='00')
+        self.grid_rowconfigure(2,weight=1,uniform=1)
 
         self.Scale.grid_remove()
         self.Scale.L.grid_remove()
@@ -277,9 +279,10 @@ class Gallery(ttk.Labelframe):
         #self.moving(e)
 
 
-    def remove_selected(self,to = None,*cs):
+    def remove_selected(self,to = None, cs = None , add = []):
         #print('remove selected')
-        cs = cs if cs else self.get_selected_imgs(ids=1)
+
+        cs =  cs if cs else self.get_selected_imgs(ids=1)
         new = dict(objpil=dict() , _f_id = dict() , _f_id2 = dict() )
         cc = to.count
         for c in cs:
@@ -294,14 +297,15 @@ class Gallery(ttk.Labelframe):
             cc += 1
             self.count -= 1
 
-        self.deselect()
+        if 'keep_select' not in add:
+            self.deselect()
         self.update_labelframe_text()
         self.myfree = cs
 
-        if to:
-            to._sent = new
-        else:
+        to._sent = new
+        if 'ret' in add:
             return new
+
 
     def use(self):
         self.objpil.update(self._sent['objpil']) ;
@@ -330,7 +334,7 @@ class Gallery(ttk.Labelframe):
             self.c.tag_bind(tag,'<Enter>',self.preview_enter)
             self.c.tag_bind(tag,'<Leave>',self.preview_leave)
             self.c.tag_bind(tag,'<Motion>',self.preview_motion)
-            print(f'new {x=} {y=}')
+            #print(f'new {x=} {y=}')
 
         self._sent.clear()
         self.update_labelframe_text()
@@ -422,6 +426,7 @@ class Gallery(ttk.Labelframe):
 
         self.count = self._dict['_f_count']
         self.Pvar.set(0)
+        #print(f'{self.count=}')
         self.Progress.config(max=self.count)
         self.ifshow(self.Progress,1)
 
@@ -701,20 +706,205 @@ class GalleryManager:
         self.active_id = []
         self.galleries = dict()
         self.cat_frames = dict()
+        self._all = dict()
         self.h = 0.9
         self.categories_dict = {'uncategorized':'Uncategorized Images','training':'Training Images','validation':'Validation Images','testing':'Testing Images'}
         self.categories_count = len(self.categories_dict)
+        self.class_id = dict()
+        self.id_class = dict()
+        self.counter = 0
         self.start = 1-self.h
         self.dy = self.h / self.categories_count
         self.y = [self.start+(i*self.dy) for i in range(self.categories_count)]
-        self.inplace = 0
+        self.expanded = dict()
+        self.allocated = dict()
+        self.alloc_win = None
+        self.send_win = None
         self.init()
     def init(self):
         for cat,y  in zip(self.categories_dict.items(),self.y):
             word,label = cat
             self.cat_frames[word] = (f:= ttk.Frame(self.parent))
             f.place(x=0,rely=y,relwidth=1,relheight=self.dy)
+            self.expanded[f] = tk.IntVar(value = 0)
 
+    def init_allocated(self):
+        aw = self.alloc_win = tk.Toplevel(main)
+        self.alloc_win.cbvar=dict()
+        self.alloc_win.cbvar2=dict()
+        self.alloc_win.cbvar3=dict()
+
+        aw.cl = []
+        aw.cl2 = []
+        _hideToplevel(self.alloc_win)
+        _alterToplevelClose(aw)
+
+        c=0
+        aw.L = ttk.Label(self.alloc_win,text='Select percentage of images to allocate randomly from "{}" to:')
+        self.alloc_win.L.grid(row=0,column=0,columnspan=2)
+        m = tk.Menu(aw,tearoff = 0)
+        mb = ttk.Menubutton(aw, text = 'Options', menu = m)
+        m.add_command(label = '60 20 20 Split', command = lambda : self.fill_alloc((60,20,20)))
+        m.add_command(label = '50 25 25 Split', command = lambda : self.fill_alloc((50,25,25)))
+        mb.grid(row=1,column=1,columnspan=1,sticky='we')
+        c+=2
+        for str,long in self.categories_dict.items():
+            cb = ttk.Checkbutton(self.alloc_win,text=f'"{long}"')
+            e = ttk.Entry(self.alloc_win , state = 'disabled')
+            self.alloc_win.cbvar[str] = (tmp:=tk.IntVar(value=0))
+            self.alloc_win.cbvar2[str] = cb
+            self.alloc_win.cbvar3[str] = e
+
+            cb.config(variable=tmp,command = lambda a=e,b=tmp: a.config(state = ['normal','disabled'][not b.get()]))
+            tk.Grid.grid(cb,row=c,column=0,sticky='nswe')
+            tk.Grid.grid(e,row=c,column=1,sticky='nswe')
+            c+=1
+
+        ttk.Button(self.alloc_win,text='Partition',command = self.do_allocated).grid(row=c,column=0,sticky='we')
+        ttk.Button(self.alloc_win,text='Cancel',command = lambda: _hideToplevel(self.alloc_win)).grid(row=c,column=1,sticky='we')
+        self.alloc_win.grid_columnconfigure('all',weight=1,uniform=1,pad=10)
+        self.alloc_win.grid_rowconfigure(c,pad=10)
+        self.alloc_win.grid_rowconfigure(0,pad=10)
+
+        for i,d in self.galleries.items():
+            for _str,g in d.items():
+                g.M.entryconfigure(g.M.index('Partition this set'),command = lambda a = _str,b=g,c=i : self.show_allocated(c,a,b))
+
+    def show_allocated(self,id,str,g):
+        (aw := self.alloc_win).L.config(text = self.alloc_win.L.cget('text').format(g.get_labelframe_text()) )
+        t = self._all[g]
+        aw.cg = g #current gallery
+        aw.cl0 = [ i for i in self.categories_dict if i != str ] #current str s list excluding current str
+        aw.cl = [ (i,j) for i,j in aw.cbvar2.items() if i != str ]
+        aw.cl2 = [ (i,j) for i,j in aw.cbvar3.items() if i != str ]
+        aw.cl3 = [ (i,j) for i,j in self.galleries[id].items() if i != str ]
+        for d1,d2 in zip(self.alloc_win.cbvar2.items(),self.alloc_win.cbvar3.items()):
+            a,b = d1
+            c,d = d2
+            try:
+                b.grid_remove()
+                d.grid_remove()
+            except:
+                pass
+        for d1,d2 in zip(self.alloc_win.cbvar2.items(),self.alloc_win.cbvar3.items()):
+            a,b = d1
+            c,d = d2
+            if a==str:
+                continue
+            b.grid()
+            d.grid()
+        _showToplevel(self.alloc_win)
+
+    def do_allocated(self,*e):
+        aw = self.alloc_win
+        g = [j for i,j in aw.cl3]
+        e = [j for i,j in aw.cl2]
+        eg = zip(e,g)
+        count = aw.cg.count
+        for e,g in eg:
+            put(f'{g.get_labelframe_text() =}')
+
+            try:
+                txt = int( e.get().strip(' %') )
+                txt /= 100
+                txt = int(txt*count)
+                #put(f'{txt = } {txt*count=}')
+            except:
+                pass
+            else:
+                cs = list(aw.cg.objpil.keys())
+                #put (f'{cs=} {g.get_labelframe_text() =} {txt=}')
+                cs = random.sample(cs, txt)
+                aw.cg.remove_selected(g,cs)
+                g.use()
+
+    def fill_alloc(self,tup):
+        aw = self.alloc_win
+        e = [j for i,j in aw.cl2]
+        for i,j in zip(e,tup):
+            i.delete(0,'end')
+            i.insert(0,f'{j} %')
+
+    def init_send(self):
+        self.send_win = tk.Toplevel(main)
+        sw = self.send_win
+        sw.string = 'Move {} selected item(s) to:'
+        _hideToplevel(self.send_win)
+        _alterToplevelClose(sw)
+        self.send_win.rbvar=dict()
+        self.send_win.L = ttk.Label(self.send_win,text= '',anchor='center')
+        self.send_win.var = tk.StringVar()
+        c=1
+        self.send_win.L.grid(row=0,column=0,columnspan=2,sticky='nswe')
+        for cat,long in self.categories_dict.items():
+            rb=ttk.Radiobutton(self.send_win,value=cat,variable=self.send_win.var,text=f'"{long}"')
+            self.send_win.rbvar[cat]=rb
+            rb.grid(row=c,column=0,columnspan=1,sticky='nswe')
+            c += 1
+        sw = self.send_win
+        sw.b1 = ttk.Button(self.send_win,text='Move')
+        sw.b1.grid(row=c,column=0,sticky='nswe')
+        sw.b2=ttk.Button(self.send_win,text='Cancel',command = lambda: _hideToplevel(self.send_win))
+        sw.b2.grid(row=c,column=1,sticky='nswe')
+        sw.grid_columnconfigure(0,weight=1,uniform=1)
+        sw.grid_columnconfigure(1,weight=1,uniform=1)
+        for i,d in self.galleries.items():
+            for str,g in d.items():
+                g.MM.entryconfigure(g.MM.index('Move to'),command = lambda a=str,b=g,c=i : self.show_send(c,a,b))
+        #put(f'{sw.rbvar=}')
+
+    def show_send(self,id,cat,g):
+        sw = self.send_win
+        #print(f'GOT {id=} {cat=} {g=} {sw.rbvar[cat]=}')
+
+        sw.b1.config(command=lambda g=g: self.do_send(g))
+        count = len(g.s_used)
+        sw.L.config(text = sw.string.format(count) )
+        for _cat,rb in self.send_win.rbvar.items():
+            try:
+                rb.grid_remove()
+            except:
+                pass
+        for _cat,rb in sw.rbvar.items():
+            if _cat==cat:
+                print(f'{_cat=} {cat=}')
+                continue
+            rb.grid()
+
+        if count:
+            _showToplevel(self.send_win)
+
+    def do_send(self,g):
+        sw = self.send_win
+
+        to=sw.var.get()
+        to=self.galleries[self.active_id][to]
+        g.remove_selected(to)
+        to.use()
+        _hideToplevel(sw)
+
+
+    def hook_expand(self,m,f):
+        i = m.index('Expand')
+        m.entryconfigure(i,variable=self.expanded[f],command= lambda a=f : self.m_expand(a))
+
+    def m_expand(self,f):
+        v = self.expanded[f].get()
+        b = self.expanded.keys()
+        a = [i for i in b if i != f]
+        #put(f'before {v=}')
+        if v:
+            for i in a:
+                self.expanded[i].set(0)
+                i.place_configure(relheight=0)
+
+            f.place_configure(rely= 0.1 , relheight = self.h)
+        else:
+            #print('OFF')
+            for i,y in zip(b,self.y):
+                self.expanded[i].set(0)
+                i.place_configure(rely=y,relheight=self.dy)
+        #put(f'before {self.expanded[f].get()=}')
     def clear(self):
         if not self.active_id:
             return
@@ -731,19 +921,46 @@ class GalleryManager:
         if id not in self.galleries:
             self.clear()
             self.galleries[id] = dict()
+            self.class_id[id] = self.counter
+            self.id_class[self.counter] = id
+            self.counter += 1
             for cat,_dict in kw.items():
                 label = self.categories_dict[cat]
                 self.galleries[id][cat] = (g:= Gallery(f:=self.cat_frames[cat],text=label))
                 g.pack(**self.pack_args)
+                self.hook_expand(g.M,f)
                 g._dict = _dict
                 g.W = f.winfo_width()
                 g.H = f.winfo_height()
                 g.Threadload()
                 self.active_id = id
+                self._all[g]=cat
+            self.init_allocated()
+            self.init_send()
         else:
             self.clear()
             self.show(id)
 
+    def exportnumpy(self):
+        img = dict()
+        lab = dict()
+
+        for i,d in self.galleries.items():
+            for cat,g in d.items():
+                if cat not in img:
+                    img[cat] = []
+                    lab[cat] = []
+                img[cat] += g.objpil.values()
+                lab[cat] += [self.class_id[i]] * len(g.objpil)
+
+
+        img2 = dict()
+        lab2 = dict()
+        for cat in img:
+            img2[cat] = list( map( lambda x : np.array(x) , img[cat] ) )
+            lab2[cat] =  np.array(lab[cat] )
+
+        return [img2,lab2]
 
 
 
@@ -823,7 +1040,7 @@ class Path:
                     '_v':'',
                     '_v_id':dict(),
                     '_v_id2':dict(),
-                    '_v_count':dict(),
+                    '_v_count':0,
                     '_t':'',
                     '_t_id':dict(),
                     '_t_id2':dict(),
@@ -981,17 +1198,8 @@ def _browseToDir(_dir,_title):
 
 # File -> (index 0) ; of validation and training dirs
 def _getParentDir():
-    #path = _browseToDir(os.getcwd(), fileMenu.entrycget(0,'label'))
-    path="F:/Downloads/576013_1042828_bundle_archive/COVID-19 Radiography Database"
-    _all = os.listdir(path)
-    a = _all[0]
-    b = _all[1]
-    # remove everything after "dataset"
-    #frame01.setLabel(a,True)
-    #twoFrame['text'] = " ".join (str.split(frame01['text'])[:3] + ['"{}"'.format(b)])
+    path = _browseToDir(os.getcwd(), fileMenu.entrycget(0,'label'))
 
-    fullA, fullB = [os.path.join(path, i) for i in [a , b]]
-    #gfor01.loadFromDir(fullA)
     Tpath.setpath(path)
 
 
@@ -1272,6 +1480,7 @@ class XUpdown(Updown):
     def __init__(self,parent,**kw):
 
         self.count = kw.pop('count',1)
+        self._self = kw.pop('K')
         #self.lwidth = kw.pop('lwidth')
         super().__init__(parent,**kw)
         self.x = '\u274c'
@@ -1295,6 +1504,7 @@ class XUpdown(Updown):
         self.line3.grid_remove()
 
     def delete(self,e):
+        self._self.delete(self.count)
         self.destroy()
 
 class Slot(tk.Frame):
@@ -1367,17 +1577,17 @@ class Slot(tk.Frame):
         self.sbv.config(command=self.c.yview)
 
     def banner_txt_ret(self,e):
-        self.banner.ltxt['text'] = e.widget.get()
+        self.ltxt['text'] = e.widget.get()
         c = e.widget.grid_info()
         e.widget.grid_remove()
-        self.banner.ltxt.grid(**c)
-        self.banner.ltxt.myset = 1
+        self.ltxt.grid(**c)
+        self.ltxt.myset = 1
 
     def banner_txt_show(self):
-        if 'myset' not in vars(self.banner.ltxt):
+        if 'myset' not in vars(self.ltxt):
             return
-        self.banner.ltxt.grid_remove()
-        self.banner.txt.grid()
+        self.ltxt.grid_remove()
+        self.txt.grid()
 
     def init_main(self):
 
@@ -1419,6 +1629,23 @@ class K(Slot):
         self.lcount = 0
         self.dense , self.conv , self.flat , self.pool = dict() , dict() , dict() , dict()
 
+        self.summary.add_main()
+        self.summary.main[0].config(text = '')
+        self.summary.main[1].config(text = 'Report')
+        self.genreport = ttk.Button(self.summary.main[0],text='Generate Summary', command = self.gen)
+        self.report = ttk.Label(self.summary.main[1],text='')
+        self.genreport.pack(side=TOP,fill=X)
+        self.report.pack(side=TOP,fill=BOTH,expand=1)
+
+
+        self.train_model = Updown(self,banner_text='Training Output')
+        self.train_model.main[0].config(text='')
+        self.train_model.grid(row=4,rowspan = 1, column = 0, columnspan =3, sticky='nswe')
+        self.run_b = ttk.Button(self.train_model.main[0],text = 'Run Model',command = self.run)
+        self.run_b.pack(side=TOP,fill=X,expand=1)
+
+        self.c = self.master.master
+        self.first_conv = 1
         self.update_actions()
 
     def update_count(self,plus=1,minus=None):
@@ -1442,18 +1669,19 @@ class K(Slot):
     def update_actions(self):
         i = self.mact.index('Collapsed')
         self.mact.insert_separator(i)
-        for j,c in zip(['Add a Pooling Layer',
-        'Add a Convolutional Layer',
-        'Add a Dense Neuron Layer','Add a Flattening Layer'],
+        for j,c in zip(['Add a Pooling Layer','Add a Convolutional Layer','Add a Dense Neuron Layer','Add a Flattening Layer'],
         ['addPool','addConvolutional','addNeuron','addFlatten']):
             self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
     def addLayer(self, ftext = 'Some Layer', mtext = ''):
         c = self.update_count()
-        f = XUpdown(self.details.main[0] , count = c, banner_text  = ftext)
+        f = XUpdown(self.details.main[0] , count = c, banner_text  = ftext , K = self )
         ff = f.main[0]
         ff.config(text = mtext)
         self.pack_layer(f)
         #self.xconfigsend()
+
+        self.scrolldown_and_bbox(self.c)
+
         return (c,f,ff)
     def pack_layer(self, f):
         f.pack(side=TOP,expand=1,fill=BOTH,padx=5, pady=5)
@@ -1506,6 +1734,9 @@ class K(Slot):
         except:
             pass
         m.grid_columnconfigure('all',weight=1,uniform=1)
+
+        self.scrolldown_and_bbox(self.c)
+
         return [left,righ,mm,mb]
 
     def addFlatten(self):
@@ -1571,8 +1802,23 @@ class K(Slot):
     def addConvolutional(self):
         c,_,m = self.addLayer('2D Convolutional Layer')
 
-        id2 = 1
         dname = 'conv'
+        id2 = 1
+        if c == 1:
+            self.add_row(m,c,id2,dname,left={
+            'call':ttk.Label,
+            'call_args':dict(text='Data Shape')
+            },
+            righ = {
+            'call':tk.Entry,
+            'call_args':dict(relief='solid')
+            },
+            menu = { 'command' : dict(label='Default: (1024,1024,3)',
+            func=self.conv_1st , func_args = ['(1024,1024,3)'])  })
+
+            id2 += 1
+
+
         self.add_row(m,c,id2,dname,left={
         'call':ttk.Label,
         'call_args':dict(text='Convolution Iteration(s)')
@@ -1584,7 +1830,7 @@ class K(Slot):
         menu = { 'command' : dict(label='Default: 32',
         func=self.conv_count , func_args = [32])  })
 
-        id2 = 2
+        id2 += 1
         self.add_row(m,c,id2,dname,left={
         'call':ttk.Label,
         'call_args':dict(text='Filter Size')
@@ -1596,7 +1842,7 @@ class K(Slot):
         menu = { 'command' : dict(label='Default: (3,3)',
         func=self.conv_filter_size , func_args = ['(3,3)'])  })
 
-        id2 = 3
+        id2 += 1
         self.add_row(m,c,id2,dname,left={
         'call':ttk.Label,
         'call_args':dict(text='Activation Function')
@@ -1607,6 +1853,12 @@ class K(Slot):
         },
         menu = { 'command' : dict(label='Default: "relu"',
         func=self.conv_af , func_args = ['"relu"'])  })
+
+        #print(f'{self.conv=}')
+    def conv_1st(self,c,cc,size):
+        e = self.conv[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,size)
 
     def conv_count(self,c,cc,count):
         e = self.conv[c][cc]['righ']
@@ -1635,15 +1887,187 @@ class K(Slot):
         },
         menu = { 'command' : dict(label='Default: "MaxPooling2D"',
         func=self.pool_type , func_args = ['"MaxPooling2D"']) })
+
+        id2 = 2
+        self.add_row(m,c,id2,'pool',left={
+        'call':ttk.Label,
+        'call_args':dict(text='Pooling Filter Size')
+        },
+        righ = {
+        'call':tk.Entry,
+        'call_args':dict(relief='solid')
+        },
+        menu = { 'command' : dict(label='Default: (2,2)',
+        func=self.pool_fs , func_args = ['(2,2)']) })
+
     def pool_type(self,c,cc,type):
         e = self.pool[c][cc]['righ']
         e.delete(0,'end')
         e.insert(0,type)
+
+    def pool_fs(self,c,cc,size):
+        e = self.pool[c][cc]['righ']
+        e.delete(0,'end')
+        e.insert(0,size)
+
     def hass(self,c):
         print(f'self.pass {c=}')
 
 
+    def decipher_conv(self):
+        new = dict()
+
+        for count, d in self.conv.items():
+            row = 1
+            new[count] = dict(required = [], kw = dict() , func = 'tf.keras.layers.Conv2D')
+            if count == 1:
+                new[count]['kw']['input_shape'] = eval( d[row]['righ'].get() )
+                row += 1
+
+            new[count]['required'] = [ int( d[row]['righ'].get() ) ] ; row+=1
+            new[count]['required'] += [ eval( d[row]['righ'].get() ) ] ; row += 1
+            new[count]['kw']['activation'] = eval( d[row]['righ'].get() )
+
+        return new
+    def decipher_dense(self):
+        new = dict()
+        for count, d in self.dense.items():
+            new[count] = dict(required = [], kw = dict() , func = 'tf.keras.layers.Dense')
+            new[count]['required'] = [ int( d[1]['righ'].get() ) ]
+            new[count]['kw']['activation'] = eval( d[2]['righ'].get() )
+
+        return new
+    def decipher_flat(self):
+        new = dict()
+        for count, d in self.flat.items():
+            new[count] = dict(required = [], kw = dict() , func = 'tf.keras.layers.Flatten')
+
+        return new
+    def decipher_pool(self):
+        new = dict()
+        for count, d in self.pool.items():
+            new[count] = dict(required = [], kw = dict() , func = 'tf.keras.layers')
+            string = eval( d[1]['righ'].get() )
+            new[count]['func'] = "{}.{}".format(new[count]['func'],string)
+            tup = eval( d[2]['righ'].get() )
+            new[count]['required'] = list(tup)
+
+        return new
+
+    def translate(self,prin = 1):
+        new = dict()
+        for i in 'pool dense flat conv'.split():
+            tmp = getattr(self,"decipher_%s"%i)()
+            new.update(tmp)
+        if prin:
+            for i in sorted(new):
+                print(new[i],'\n')
+        return new
+    def delete(self,c):
+        for i in 'pool dense flat conv'.split():
+            tmp = getattr(self,i)
+            if c in tmp:
+                tmp.pop(c)
+                break
+        self.lcount -= 1
+
+    def gen(self):
+        self.model = m = tf.keras.models.Sequential()
+        tf.keras.backend.clear_session()
+        self.label_summary = []
+
+        def print2(i ):
+            self.label_summary += [i]
+            self.report.config(text ='\n'.join(self.label_summary))
+
+        methods = self.translate(0)
+        for i in sorted(methods):
+            d = methods[i]
+            tmp = eval(d['func'])
+            tmp = tmp(*d['required'],**d['kw'])
+            m.add(tmp)
+            #print(tmp)
+
+        m.summary(print_fn=print2)
+        self.scrolldown_and_bbox(self.c)
+    def run(self):
+        imgs , labels = globals()['GM'].exportnumpy()
+
+        self.traini,self.trail = imgs['training'],labels['training']
+
+        self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['acc','loss'])
+
+        threading.Thread(target=self.Threadrun).start()
+
+    def Threadrun(self):
+        history = self.model.fit(self.traini,self.trail,epochs = 20)
+
+
 #--------------------------------------------------------------------------------------------#
+class Run:
+    def __init__(self,parent = frame2):
+        self.sbv = tk.Scrollbar(parent)
+        self.c = tk.Canvas(parent,bg=BLUE)
+        self.cf = tk.Frame(self.c)
+        #self.cf.bind('<Visibility>',self.once_bbox)
+        self.c.bind('<Configure>',self.onconfig)
+        self.sbv.config(command = self.c.yview)
+        self.c.config(yscrollcommand=self.sbv.set)
+        self.sbv.grid(row = 0, column = 2, rowspan = 2, sticky = 'ns')
+        self.c.grid(row = 1, column = 0, columnspan = 2, sticky = 'nswe')
+        self.c.create_window(0,0,window=self.cf,tag='cf',anchor='nw') # <Configure> event fired. after this
+        #self.c.config(scrollregion=self.c.bbox('all'))
+        parent.grid_columnconfigure(2,weight=0,uniform='0')
+        parent.grid_columnconfigure(1,weight=0,uniform='00')
+        parent.grid_columnconfigure(0,weight=1,uniform=1)
+        parent.grid_rowconfigure(1,weight=1,uniform=1)
+        self.tri = '\u25b6'
+
+    def add(self,textvar1='',textvar2=''):
+        pad = 10
+        newf = ttk.Labelframe(self.cf,text='testt')
+        name0 = ttk.Label(newf, text = 'Model Name:',anchor = 'w')
+        type0 = ttk.Label(newf, text = 'Model Type:',anchor = 'w')
+        name = ttk.Label(newf,text='Name',textvariable=textvar1)
+        typee = ttk.Label(newf,text='type', textvariable = textvar2)
+
+        b = ttk.Button(newf,text = f'{self.tri} Run')
+        b.grid(row=0,rowspan = 2, column = 2, sticky='nswe')
+        name0.grid(row=0,rowspan = 1, column = 0, sticky='nswe')
+        name.grid(row=0,rowspan = 1, column = 1, sticky='nswe')
+        typee.grid(row=1,rowspan = 1, column = 1, sticky='nswe')
+        type0.grid(row=1,rowspan = 1, column = 0, sticky='nswe')
+        cf=self.cf
+        newf.grid_columnconfigure([0,2],weight = 1 ,uniform = 1)
+        newf.grid_columnconfigure(1,weight = 2 ,uniform = 1)
+        #cf.grid_columnconfigure(3,weight = 0 ,uniform = '000')
+
+        newf2 = Updown(newf,banner_text = 'Model Statistics')
+        newf2.grid(row=2,rowspan = 1, column = 0, columnspan = 3, sticky='nswe')
+
+        newf.pack(side=TOP,fill=X,pady=[0,10])
+
+    def onconfig(self,e):
+        print('onconfig called')
+        self.c.config(scrollregion=self.c.bbox('all'))
+        self.c.itemconfig('cf', width = e.width)
+
+    def once_config(self,e):
+        c = self.c
+        self.c.itemconfig('cf',width=e.width,hieght=e.height)
+        self.scrolldown_and_bbox(c)
+        e.widget.bind('<Configure>','')
+
+
+    def scrolldown_and_bbox(self,c):
+        self.dobbox(c)
+        self.scrolldown(c)
+
+    def dobbox(self,c):
+        c.config(scrollregion = c.bbox('all'))
+
+    def scrolldown(self,c):
+        c.yview_moveto(1)
 
 # models main frame
 
@@ -1659,7 +2083,7 @@ class Frame1Model:
         self.new_mb = ttk.Menubutton              (parent,text='New Model',menu=self.new_menu)
         self.new_mb.grid(row=0,column=3,sticky='nswe')
         self.sbv = tk.Scrollbar(parent)
-        self.c = tk.Canvas(parent,bg=BLUE)
+        self.c = tk.Canvas(parent)
         self.cf = tk.Frame(self.c)
 
 
@@ -1678,7 +2102,7 @@ class Frame1Model:
         parent.grid_rowconfigure(1,weight=1,uniform=1)
         self.sbv.grid_remove()
 
-
+        self.run = Run()
     def startModel(self, _class):
         parent = self.parent
         self.sbv.grid()
@@ -1690,9 +2114,9 @@ class Frame1Model:
             self.c.create_window(0,0,window=self.cf,tag='cf',anchor='nw') # <Configure> event fired. after this
             self.c.config(scrollregion=self.c.bbox('all'))
 
-        _class(self.cf)
+        self.model = _class(self.cf)
         #self.c.yview_moveto(1)
-
+        self.run.add()
     def onconfig(self,e):
         print('onconfig called')
         self.c.config(scrollregion=self.c.bbox('all'))
@@ -1705,8 +2129,10 @@ this = Frame1Model(frame1)
 
 #/frame0/exe entry
 #/frame0/exe button
-(debugbutton := ttk.Button(frame0,command=debug,text='Execute')).pack(expand = 0,side = TOP, fill = X)
-(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11')).pack(expand = 0,side = TOP, fill = X)
+(debugbutton := ttk.Button(frame0,command=debug,text='Execute'))
+#.pack(expand = 0,side = TOP, fill = X)
+(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11'))
+#.pack(expand = 0,side = TOP, fill = X)
 
 entryfor0.bind('<Key-Return>',debug)
 
@@ -1957,94 +2383,6 @@ main.Labelfont = tkinter.font.Font(font=banner.cget('font'))
 ##print(main.Labelfont.config(weight='bold'))
 #--------------------------------------------------------------------------------------------#
 
-class Allocate(tk.Toplevel):
-    def __init__(self, all , master = main): #self.a(ll) all refernces to other galleries
-        super().__init__(master = master)
-        _alterToplevelClose(self)
-
-        self.all = all
-        self.f0 = tk.Frame(self)
-        self.f = tk.Frame(self.f0)
-##        for i in all:
-##            print(f'{i=}')
-##            print()
-        self.id1 = {j : g for j,g in enumerate(all) }
-        self.id2 = {g: j for j,g in self.id1.items()}
-        self.evar = {j : tk.StringVar() for j in self.id1 }
-        self.e = {j : ttk.Entry(self.f,textvariable = self.evar[j] , state = 'disabled') for j in self.id1 }
-        self.cbvar = {j : tk.IntVar(value = 0) for j in self.id1 }
-        self.cb = {j : ttk.Checkbutton(self.f, variable = self.cbvar[j] , text = f'"{g.get_labelframe_text()}"' ) for j,g in self.id1.items() }
-        [cb.config(command = lambda e=self.e[j] , myvar = self.cbvar[j] : e.config(state = ['disabled','normal'][myvar.get()]) ) for j,cb in self.cb.items()]
-
-        self.l = ttk.Label(self.f0 )
-        self.b = ttk.Button(self.f0, text = 'Allocate' , command = lambda : self.allocate())
-        self.cancel = ttk.Button(self.f0, text = 'Cancel', command = lambda : _hideToplevel(self))
-
-         #
-        self.lenall = len(self.all)
-
-
-
-        self.mygrid(init=1)
-        self.f.pack(side = TOP, expand = 1 , fill = X,pady=10)
-        self.b.pack(side = LEFT, expand = 1 , fill = X,pady=10)
-        self.cancel.pack(side = RIGHT, expand = 1 , fill = X,pady=10)
-
-        self.gto = None
-        self.gfrom = None # current gallery from which it's called
-        self.gl = ''
-
-        self.f0.pack(side=TOP,expand=1,fill=BOTH,padx=10,pady=10)
-        self.resizable(0,0)
-        self.title('Partition')
-
-        _hideToplevel(self)
-
-    def mygrid(self, init = 0):
-
-        if init:
-            for cb,e , row , col in zip(self.cb.values() , self.e.values() , range(1,self.lenall+1) , [0]*self.lenall ):
-                cb.grid( row = row, column = col , sticky = 'nswe')
-                e.grid( row = row, column = col+1 , sticky = 'nswe')
-                cb.grid_remove()
-                e.grid_remove()
-            self.f.grid_columnconfigure(col,weight=1,uniform=2)
-            self.f.grid_columnconfigure(col+1,weight=1,uniform=2)
-            self.f.grid_columnconfigure(col+2,weight=0,uniform=0)
-            #self.f.pack_config(padx=10)
-            return
-
-        for cb,e  in zip(self.cb.values() , self.e.values() ):
-            cb.grid_remove()
-            e.grid_remove()
-        for g,j in self.gto.items():
-            self.cb[j].grid()
-            self.e[j].grid()
-
-
-    def setlabel(self):
-        s = 'Select percentage of images to allocate randomly'
-        if self.gfrom:
-            s = '%s from "%s" to:'%(s,self.gl)
-        self.l.config(text= s)
-
-    def myshow(self,g):
-        if not self.l.winfo_ismapped():
-            self.f0.bind('<Configure>',lambda e,this=self.l : this.config(wraplength=e.width))
-            self.l.pack(side = TOP, expand = 0 , fill = X,pady=10 , before = self.f)
-        self.gfrom = g
-        self.gto = {i : self.id2[i] for i in self.all if i!=g}
-        self.gl = g.get_labelframe_text()
-        self.title(f'Partition "{self.gl}"')
-        self.setlabel()
-        self.mygrid()
-        _showToplevel(self)
-
-    def allocate(self):
-        for g,j in self.gto.items():
-            print(f'{self.evar[j].get()=}')
-        _hideToplevel(self)
-
 
 
 #paned/right frame/second paned window/"uncategorized" frame/
@@ -2061,6 +2399,7 @@ class Allocate(tk.Toplevel):
 
 #--------------------------------------------------------------------------------------------#
 
+
 #paned/right frame/bottom frame
 #(Valid:=Gallery(right,text='Validation Images')).place(rely=0.55 , x = 0, relwidth=1, relheight=0.225)
 
@@ -2071,88 +2410,6 @@ class Allocate(tk.Toplevel):
 #chosen path assesor
 Tpath=Path(tree=tree)
 
-#Main_allocate = Allocate([All,Train,Valid,Test])
-
-"""Tpath.mytop = tk.Toplevel(main)
-
-Tpath.myf = ttk.Frame(Tpath.mytop)
-Tpath.myf.pack(side = TOP, expand = 1, fill = BOTH)
-Tpath.myf.topl = ttk.Label(Tpath.myf, text = 'Please Choose the directory structure of the image dataset' , anchor = 'center')
-Tpath.myf.topl.grid(row = 0, column = 0, columnspan = 3, sticky = 'nswe')
-
-
-Tpath.myf.sc = ScrollableCanvas(Tpath.myf)
-
-Tpath.myf.sc.img1 = ImageTk.PhotoImage(file = 'diagram 1.png')
-Tpath.myf.sc.img2 = ImageTk.PhotoImage(file = 'diagram 2.png')
-Tpath.myf.sc.Var = tk.StringVar()
-Tpath.myf.sc.cb1 = ttk.Radiobutton(Tpath.myf.sc.c, value = 0, variable = Tpath.myf.sc.Var , text = 'Stnadard\nPartioning' , image = Tpath.myf.sc.img1 , compound = RIGHT)
-Tpath.myf.sc.cb2 = ttk.Radiobutton(Tpath.myf.sc.c, value = 1, variable = Tpath.myf.sc.Var , text = '"Misplaced"\nPartioning' , image = Tpath.myf.sc.img2 , compound = RIGHT)
-Tpath.myf.sc.c.create_window(0,0, window = Tpath.myf.sc.cb1 , height = 981)
-Tpath.myf.sc.c.create_window(555,0, window = Tpath.myf.sc.cb2 , height = 981)
-Tpath.myf.sc.grid(row = 1, column = 0 , columnspan = 3 , sticky = 'nswe')
-Tpath.myf.b1 = ttk.Button(Tpath.myf, text = 'Proceed')
-Tpath.myf.b1.grid(row = 2 , column = 0 , sticky = 'nswe')
-Tpath.myf.b2 = ttk.Button(Tpath.myf, text = 'Cancel')
-Tpath.myf.b2.grid(row = 2 , column = 2 , sticky = 'nswe')
-Tpath.myf.grid_columnconfigure([0,2] , uniform = 1 , weight = 1)
-Tpath.myf.grid_rowconfigure(1 , uniform = 1 , weight = 1)
-Tpath.myf.sc.bind('<Configure>',lambda e: e.widget.c.config(scrollregion = e.widget.c.bbox('all') ))"""
-#--------------------------------------------------------------------------------------------#
-
-
-class To(tk.Toplevel):
-    def __init__(self,a,parent=main):
-        super().__init__(master=parent)
-        self.g=None
-        self.f = ttk.Frame(self)
-        self.myvar=tk.IntVar()
-        self.ka = {i:ttk.Radiobutton(self.f,value = j+1, variable = self.myvar , text=i.get_labelframe_text()) for j,i in enumerate(a)}
-        self.ka2 = {i+1: g for i,g in enumerate(a)}
-        #self.ka2 = {i: rb for enumerate(list(self.ka.values()))}
-        #self.resizable(0,0)
-        _alterToplevelClose(self)
-        _hideToplevel(self)
-        self.f.pack(side=TOP,expand=1,fill=BOTH)
-        self.init()
-    def init(self):
-        self.f.l = ttk.Label(self.f,text='Move x selected item(s) to')
-        self.f.l.grid(row=0 , column = 0 , columnspan = 2)
-
-        count=1
-        for g,rb in self.ka.items():
-            rb.grid(row = count,column = 0,sticky='nswe' )
-            count+=1
-        self.f.grid_columnconfigure([0,1],weight=1,uniform=1)
-
-        self.f.b = ttk.Button(self.f , text = 'Move', command = lambda : self.move())
-        self.f.cancel = ttk.Button(self.f , text = 'Cancel',command= lambda: _hideToplevel(self))
-
-        self.f.b.grid(row = count , column = 0 , sticky = 'we')
-        self.f.cancel.grid(row = count , column = 1 , sticky = 'we')
-        self.f.grid_rowconfigure('all',pad=10)
-        self.f.grid_columnconfigure([0,1],uniform=10,weight=1)
-        self.f.grid_rowconfigure(count,pad=10)
-
-    def show(self,sentg):
-        self.g=sentg
-        if not sentg.s_used:
-            return
-        for g,rb in self.ka.items():
-            if sentg ==g:
-                rb.grid_remove()
-            else:
-                rb.grid()
-        self.f.l['text']=self.f.l['text'].replace('x',f'{sentg.count_selected}')
-        _showToplevel(self)
-
-    def move(self):
-        if (v:= self.myvar.get()):
-            to = self.ka2[v]
-            self.g.remove_selected(to=to)
-            to.use()
-            _hideToplevel(self)
-
 
 main.title('A TF Classifier')
 #Moveto = To([All,Train,Valid,Test])
@@ -2162,11 +2419,15 @@ main.title('A TF Classifier')
 
 frame0.Slide_state=1
 frame1.Slide_state=1
+frame2.Slide_state=1
 
-switch = Slide(zeroup,[(frame0,'Configure Dataset'),(frame1,'Build Model'),(frame2,'Run Model')],sel=0)
+switch = Slide(zeroup,[(frame0,'Configure Dataset'),(frame1,'Build Model'),(frame2,'Predict')],sel=0)
 switch.pack(side=TOP,expand=0,fill=NONE)
 
+
 #main.wm_attributes('-top',1)
+
+
 
 _center(main,500,500)
 
