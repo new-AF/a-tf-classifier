@@ -959,36 +959,8 @@ class GalleryManager:
         for cat in img:
             img2[cat] = list( map( lambda x : np.array(x) , img[cat] ) )
             lab2[cat] =  np.array(lab[cat] )
-
+        print()
         return [img2,lab2]
-
-
-
-# disable the right label widget if no path is set
-class LabelAB(tk.Frame):
-    def __init__(self,master, **kwargs):
-        self.disabled = 1
-        self.disabledText = 'Please select File -> "{}"'.format(fileMenu.entrycget(0,'label'))
-        super().__init__(master, *kwargs)
-        self.L1 = Packer(ttk.Label(self, text = 'Parent Directory :', anchor = 'center'),'side = left  ; padx = 10')
-        self.L2 = Packer(ttk.Label(self, text = self.disabledText), 'side = right ; expand = 1 ; fill = x')
-        self.l1=self.L1.widget
-        self.l2=self.L2.widget
-        self.disable()
-
-    def settext(self, text):
-        self.enable()
-        call, text = [(self._disable,self.disabledText),(self._enable,'"{}"'.format(text))][bool(text)]
-        #print('APathLabel -> config',call,text)
-        call()
-        self.l2.config(text = text)
-
-    def enable(self):
-        self.disabled = 0
-        self.l2['state'] = 'normal'
-    def disable(self):
-        self.disabled = 1
-        self.l2['state'] = 'disabled'
 
 #asses path from the dialog
 class Path:
@@ -1167,7 +1139,7 @@ def _center(w,width=None,h=None):
         s1[1]=str(h)
     #print(f'{s1=}')
 
-    newx , newy = int(w.winfo_screenwidth()/2 - w.winfo_reqwidth()/2) , int(w.winfo_screenheight()/2 - w.winfo_reqheight()/2)
+    newx , newy = w.winfo_screenwidth()//2 - w.winfo_reqwidth()//2 , w.winfo_screenheight()//2 - w.winfo_reqheight()//2
     s = f'+{newx}+{newy}'
     if width and h:
         s = f'{s1[0]}x{s1[1]}{s}'
@@ -1183,13 +1155,6 @@ def _alterToplevelClose(w):
     w.wm_protocol("WM_DELETE_WINDOW", func = lambda i=w: _hideToplevel(i) )
 def _exitMain(w):
     w.destroy()
-def _makeABanner(p, title = 'Banner'):
-    f = tk.Frame(p,bg = 'red')
-    s = ttk.Separator(f, orient = 'horizontal')
-    l = tk.Label(f, text = title)
-    _pack('l -> fill = x', locals())
-    _pack('s -> expand = 1 ; fill = x', locals())
-    _pack('f -> side = top ; expand = 1 ; fill = x',locals())
 
 # base func to select directory dialog
 def _browseToDir(_dir,_title):
@@ -2129,10 +2094,8 @@ this = Frame1Model(frame1)
 
 #/frame0/exe entry
 #/frame0/exe button
-(debugbutton := ttk.Button(frame0,command=debug,text='Execute'))
-#.pack(expand = 0,side = TOP, fill = X)
-(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11'))
-#.pack(expand = 0,side = TOP, fill = X)
+(debugbutton := ttk.Button(frame0,command=debug,text='Execute')).pack(expand = 0,side = TOP, fill = X)
+(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11')).pack(expand = 0,side = TOP, fill = X)
 
 entryfor0.bind('<Key-Return>',debug)
 
