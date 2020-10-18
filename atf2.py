@@ -1,12 +1,13 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import tkinter.font as font
+import tkinter.filedialog as filedialog
+import os
 from PIL import Image
 from PIL import ImageTk
 
 class MyGrid:
     def my_grid(self,**kw):
-        self.parent = self.master
         for i,t in kw.items():
             if i in ('row','column'):
                 if (len_t:=len(t))==0:
@@ -49,12 +50,12 @@ class MyGrid:
     def config_row(self,*row,**kw):
         new_kw = self.config_row_or_column(row, kw)
         for r,kw in new_kw.items():
-            self.parent.grid_rowconfigure(r,kw)
+            self.master.grid_rowconfigure(r,kw)
     
     def config_column(self,*column,**kw):
         new_kw = self.config_row_or_column(column, kw)
         for c,kw in new_kw.items():
-            self.parent.grid_columnconfigure(c,kw)
+            self.master.grid_columnconfigure(c,kw)
 
 class Sizegrip(ttk.Sizegrip , MyGrid):
     def __init__(self,parent,**kw):
@@ -116,6 +117,66 @@ class Classname(MyLabel):
     def show(self):
         self.set(self.tmp)
 
+class Tree(ttk.Treeview , MyGrid):
+    def __init__(self,parent,**kw):
+        self.btext = kw.pop('button_text','Button')
+        super().__init__(parent,**kw)
+        self.button = MyButton(parent, text = self.btext , command = self.open_file_dialog)
+        self.yes='\u2714'
+        self.no='\u274c'
+        self.D = dict() # CORE
+        self.filter_images = lambda x: x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tif')
+        self.filter_dir_validation = lambda x: x.lower() == 'validation'
+        self.filter_dir_training = lambda x: x.lower() == 'training'
+    
+    def add_self_to_switcher(self, *args):
+        self.switcher , groupname , r , c = args
+        self.button.my_grid(row = r , column = c)
+        r = (r[0]+1,*r[1:])
+        self.my_grid(row = r , column = c)
+        self.switcher.add_old(groupname , self.button , None , None)
+        self.switcher.add_old(groupname , self , None , None)
+    
+    def open_file_dialog(self):
+        path = filedialog.askdirectory(initialdir = '.', title = '')
+        self.resolve(path)
+    
+    def update_tree(self):
+        pass
+    
+    def resolve(self,path , recursive_call = False):
+        obj = os.walk(os.path.abspath(path))
+        path , d , f = next(obj)
+        f = list(filter(self.filter_images , f))
+        if not recursive_call:
+            # dtrain & dvalid are each list of of potential respective dir names.
+            # ONLY 1 / 1ST DIR NAME IS CHOSEN
+            dtrain = list(filter(self.filter_dir_training,d))[:1]
+            dvalid = list(filter(self.filter_dir_validation,d))[:1]
+        else:
+            return {recursive_call : f , f'{recursive_call}_path':path , f'{recursive_call}_count': len(f)}
+        
+        # uncat is a LIST of image file names.
+        D = dict(uncat = f , uncat_path = path , uncat_count = len(f) ) # CORE
+        
+        #explore files in dtrain & dvalid dirs.
+        if dtrain:
+            dtrain = os.path.join(path,dtrain)
+            D.update( self.resolve(dtrain, 'train') )
+        else:
+            # train is a LIST of image file names.
+            D.update( {'train' : [] , 'train_path' : None , 'train_count' : 0} )
+        
+        if dvalid:
+            dvalid = os.path.join(path , dvalid)
+            D.update( self.resolve(dvalid , 'valid') )
+        else:
+            D.update( {'valid' : [] , 'valid_path' : None , 'valid_count' : 0} )
+        
+        self.D = D
+        self.update_tree()
+
+
 class Middle(ttk.Labelframe , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__()
@@ -134,7 +195,8 @@ class Middle(ttk.Labelframe , MyGrid):
         if groupname not in self.groups:
             self.groups[groupname]= {'payloads': []}
         self.groups[groupname]['payloads'] += [payload]
-        payload.my_grid(row = r , column = c , sti = sti)
+        if r and c:
+            payload.my_grid(row = r , column = c , sti = sti)
         if not show:
             payload.grid_remove()
     
@@ -214,9 +276,10 @@ if __name__ == '__main__':
     t.my_grid(row=(2,),column=(1,2),sti='we')
     t.config_column(1,2,id='1,2',weight=1) # CORE
     t.config_row(2,3,4,id = '2,3,4', weight = (0,1,0) ) # CORE
-    m.my_grid(row=(3,),column=(1,2),sti = 'nswe')
-    m.add_new(tabnames[0] , Label , (1,) , (1,) , kw_args = {'text':'lab1'} , show = False )
-    m.add_new(tabnames[1] , Label , (1,) , (2,) , kw_args = {'text':'lab2'} , show = False )
+    m.my_grid(row=(3,),column=(1,2),sti = 'nswe') # CORE
+    t2 = Tree(m , button_text = 'Open File Dialog')
+    t2.add_self_to_switcher(m, tabnames[0] , (1,) , (1,) )
+    m.add_new(tabnames[1] , Label , (1,) , (2,) , kw_args = {'text':'lab2'})
     root.sizegrip((1,),(1,100))
     root.sizegrip((4,),(1,100))
     root.mainloop()
