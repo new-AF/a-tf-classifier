@@ -122,13 +122,22 @@ class Tree(ttk.Treeview , MyGrid):
         self.btext = kw.pop('button_text','Button')
         super().__init__(parent,**kw)
         self.button = MyButton(parent, text = self.btext , command = self.open_file_dialog)
+        self.tmp_label = Label(parent)
+        self.tmp_font = font.Font(font=self.tmp_label['font'])
         self.yes='\u2714'
         self.no='\u274c'
         self.D = dict() # CORE
+        self.column_names = {'class':'Class','uncat':'Uncategorized','train':'Training','valid':'Validation'}
+        self.column_width = max(list([self.tmp_font.measure(i)+11 for i in self.column_names.values()])) # CORE uniform column width +11 is a hack b.c. .measure give ~90% of actual width
+        self['columns']=list(self.column_names.keys())
         self.filter_images = lambda x: x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tif')
         self.filter_dir_validation = lambda x: x.lower() == 'validation'
         self.filter_dir_training = lambda x: x.lower() == 'training'
-    
+        for i,j in self.column_names.items():
+            anchor = 'center'
+            self.heading(i, text=j , anchor = anchor)
+            self.column(i , anchor = anchor,stretch=0,width=self.column_width)
+        self.column('#0',width = self.column_width // 2 , anchor = 'w')
     def add_self_to_switcher(self, *args):
         self.switcher , groupname , r , c = args
         self.button.my_grid(row = r , column = c)
@@ -138,11 +147,30 @@ class Tree(ttk.Treeview , MyGrid):
         self.switcher.add_old(groupname , self , None , None)
     
     def open_file_dialog(self):
-        path = filedialog.askdirectory(initialdir = '.', title = '')
+        #path = filedialog.askdirectory(initialdir = '.', title = '')
+        path = 'C:/Users/abdullah/Documents/a-tf-classifier/576013_1042828_bundle_archive/COVID-19 Radiography Database'
         self.resolve(path)
     
     def update_tree(self):
-        pass
+        c = 0
+        for i,sub_dict in self.D.items():
+            self.insert('', c, iid = i , values = (i,
+                                                   sub_dict['uncat_count'] if sub_dict['uncat_count'] > 0 else self.no,
+                                                   sub_dict['train_count'] if sub_dict['train_count'] > 0 else self.no,
+                                                   sub_dict['valid_count'] if sub_dict['valid_count'] > 0 else self.no,
+                                                    ) ) # CORE
+            for jj,ii in enumerate(('uncat','train','valid')):
+                iid = '%s/%s'%(i,ii)
+                values_template = ['',]*4
+                self.insert(i, jj, iid = iid , values=self.column_names[ii] )
+                #self.insert(i, 1, iid = '%s/train'%i , values=self.column_names['train'] )
+                for jjj,iii in enumerate(sub_dict[ii]):
+                    #jjj is count
+                    #iii is the FILE NAME
+                    values_template[jj+1] = iii
+                    self.insert(iid, jjj, values = values_template)
+            
+            c+=1
     
     def resolve(self,path):
         obj = os.walk(os.path.abspath(path))
