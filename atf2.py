@@ -144,9 +144,22 @@ class Tree(ttk.Treeview , MyGrid):
     def update_tree(self):
         pass
     
-    def resolve(self,path , recursive_call = False):
+    def resolve(self,path):
         obj = os.walk(os.path.abspath(path))
+        path , d , _ = next(obj)
+        d = [(i,os.path.join(path,i)) for i in d]
+        D = {i : {'class':i,'path':fulld , **self.subresolve(fulld)} for i,fulld in d}
+#         for i,fulld in d:
+#             tmp = self.subresolve(fulld)
+#             D.update(tmp)
+#         print(D)
+        self.D = D
+        self.update_tree()
+        
+    def subresolve(self,path , recursive_call = False):
+        obj = os.walk(path)
         path , d , f = next(obj)
+        
         f = list(filter(self.filter_images , f))
         if not recursive_call:
             # dtrain & dvalid are each list of of potential respective dir names.
@@ -173,8 +186,7 @@ class Tree(ttk.Treeview , MyGrid):
         else:
             D.update( {'valid' : [] , 'valid_path' : None , 'valid_count' : 0} )
         
-        self.D = D
-        self.update_tree()
+        return D
 
 
 class Middle(ttk.Labelframe , MyGrid):
