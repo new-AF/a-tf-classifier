@@ -2,6 +2,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import tkinter.font as font
 import tkinter.filedialog as filedialog
+import math
 import os
 from PIL import Image
 from PIL import ImageTk
@@ -90,6 +91,21 @@ class MyButton(ttk.Button , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
 
+class MyMenuButton(ttk.Menubutton , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+
+class MySeparator(ttk.Separator , MyGrid):
+    def __init__(self,parent,orient,**kw):
+        # supply orient as None if orient=... keyword argument is to be used
+        if not orient:
+            orient = kw.pop('orient','H').lower()
+        if orient == 'h':
+            orient = 'horizontal'
+        elif orient == 'v':
+            orient = 'vertical'
+        super().__init__(parent,orient=orient,**kw)
+
 class Label(tk.Label , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
@@ -98,37 +114,18 @@ class MyLabel(ttk.Label , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
 
-class Classname(MyLabel):
-    def __init__(self,parent,**kw):
-        name = kw.pop('classname','test')
-        self.tmp = ''
-        super().__init__(parent,**kw)
-        self['font'] = 'fixed'
-        self.set(name)
-    
-    def set(self,name = ''):
-        self.name = name
-        self['text']= f'Selected Class: "{self.name}"'
-    
-    def hide(self):
-        self.tmp = self.name
-        self['text'] = ''
-    
-    def show(self):
-        self.set(self.tmp)
-
 class Tree(ttk.Treeview , MyGrid):
     def __init__(self,parent,**kw):
-        self.btext = kw.pop('button_text','Button')
+        self.L = kw.pop('label')
         super().__init__(parent,**kw)
-        self.button = MyButton(parent, text = self.btext , command = self.open_file_dialog)
         self.tmp_label = Label(parent)
         self.tmp_font = font.Font(font=self.tmp_label['font'])
         self.yes='\u2714'
         self.no='\u274c'
         self.D = dict() # CORE
         self.column_names = {'class':'Class','uncat':'Uncategorized','train':'Training','valid':'Validation'}
-        self.column_width = max(list([self.tmp_font.measure(i)+11 for i in self.column_names.values()])) # CORE uniform column width +11 is a hack b.c. .measure give ~90% of actual width
+        self.column_width = max(list([self.tmp_font.measure(i) for i in self.column_names.values()])) # CORE uniform column width +11 is a hack b.c. .measure give ~90% of actual width
+        self.column_width = math.ceil(1.3*self.column_width) # 30% more width
         self['columns']=list(self.column_names.keys())
         self.filter_images = lambda x: x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tif')
         self.filter_dir_validation = lambda x: x.lower() == 'validation'
@@ -138,17 +135,30 @@ class Tree(ttk.Treeview , MyGrid):
             self.heading(i, text=j , anchor = anchor)
             self.column(i , anchor = anchor,stretch=0,width=self.column_width)
         self.column('#0',width = self.column_width // 2 , anchor = 'w')
+        # class name label
+        self.bind('<<TreeviewSelect>>',self.event_treeview_select)
+        
+    def event_treeview_select(self,e):
+        #print (self,e,e.widget.focus())
+        name = e.widget.focus().split('/')[0]
+        self.set_class_name(name)
+    def set_class_name(self,text):
+        self.L['text']=f'Selected Class: "{text}"'
+    def reset_class_name(self):
+        self.L['text']=''
     def add_self_to_switcher(self, *args):
         self.switcher , groupname , r , c = args
-        self.button.my_grid(row = r , column = c)
+        self.L.my_grid(row = r, column = c)
         r = (r[0]+1,*r[1:])
-        self.my_grid(row = r , column = c)
+        self.button.my_grid(row = r , column = c) # CORE
+        r = (r[0]+1,*r[1:])
+        self.my_grid(row = r , column = c , sti = 'nswe') # CORE
         self.switcher.add_old(groupname , self.button , None , None)
         self.switcher.add_old(groupname , self , None , None)
-    
+        self.config_row(r[0],id='000',weight=0)
     def open_file_dialog(self):
-        #path = filedialog.askdirectory(initialdir = '.', title = '')
-        path = 'C:/Users/abdullah/Documents/a-tf-classifier/576013_1042828_bundle_archive/COVID-19 Radiography Database'
+        path = filedialog.askdirectory(initialdir = '.', title = '')
+        #path = 'C:/Users/abdullah/Documents/a-tf-classifier/576013_1042828_bundle_archive/COVID-19 Radiography Database'
         self.resolve(path)
     
     def update_tree(self):
@@ -216,27 +226,30 @@ class Tree(ttk.Treeview , MyGrid):
         
         return D
 
-
-class Middle(ttk.Labelframe , MyGrid):
+class Middle:
     def __init__(self,parent,**kw):
-        super().__init__()
+        self.parent=parent
         self.groups = dict() # CORE
         self.current_groupname = None # CORE
     
-    def add_new(self,groupname , class_ , r , c , **kw):
+    def add_new(self,groupname , class_ , **kw):
         t_args = kw.pop('t_args',tuple())
         kw_args = kw.pop('kw_args',dict())
-        sti = kw.pop('sti' , 'nwse')
-        show = kw.pop('show', True)
-        obj = class_(self,*t_args,**kw_args)
-        self.add_old(groupname, obj , r, c, sti , show)
-
-    def add_old(self,groupname,payload,r,c , sti = 'nwsw' , show = True):
+        # t_args is tuple args
+        obj = class_(self.parent,**kw_args) # CORE
+        self.add_old(groupname, obj , **kw)
+        return obj
+    
+    def add_old(self,groupname,payload, **kw):
+        grid_data = kw.pop('grid_data' , None)
+        show = kw.pop('show',False)
+        
         if groupname not in self.groups:
             self.groups[groupname]= {'payloads': []}
         self.groups[groupname]['payloads'] += [payload]
-        if r and c:
-            payload.my_grid(row = r , column = c , sti = sti)
+        
+        if grid_data:
+            payload.my_grid(**grid_data)
         if not show:
             payload.grid_remove()
     
@@ -256,6 +269,7 @@ class Middle(ttk.Labelframe , MyGrid):
 
 class Tabs(ttk.Labelframe , MyGrid):
     def __init__(self,parent,**kw):
+        self.grid_data = kw.pop('grid_self',None)
         self.switcher = kw.pop('switcher')
         super().__init__(parent,**kw)
         tmp_label = Label(parent)
@@ -268,6 +282,8 @@ class Tabs(ttk.Labelframe , MyGrid):
         self.selected_text = None
         self.max_width_label = 1
         self.grid_count = 0 # CORE
+        if self.grid_data:
+            self.my_grid(**self.grid_data)
     
     def activate(self,e,text,B):
         if self.selected_text:
@@ -305,21 +321,98 @@ class Tabs(ttk.Labelframe , MyGrid):
             return
         B['bg']=self.colors[2]
 
+class MyPanedwindow(ttk.Panedwindow, MyGrid):
+    def __init__(self,parent,**kw):
+        self.grid_data = kw.pop('grid_self',None)
+        super().__init__(parent,orient='horizontal',**kw)
+        if self.grid_data:
+            self.my_grid(**self.grid_data)
+
+class Left(ttk.Labelframe , MyGrid):
+    def __init__(self,parent,**kw):
+        self.button_text = kw.pop('button_text','Button')
+        self.grid_data = kw.pop('grid_data',dict())
+        self.tree_args = kw.pop('Tree_args',dict())
+        super().__init__(parent,text='Left',**kw)
+        # button , label , tree  
+        self.label = MyLabel(parent,text = '')
+        self.tree = Tree(self , label = self.label , **self.tree_args)
+        self.button = MyButton(self, text = self.button_text , command = self.tree.open_file_dialog)  
+        if self.grid_data:
+            self.my_grid(**self.grid_data)
+        self.button.my_grid(row = (1,) , column = (1,) , sti = 'nswe')
+        self.label.my_grid(row = (2,) , column = (1,) , sti = 'nswe')
+        self.tree.my_grid(row = (3,) , column = (1,) , sti = 'nswe')
+        self.button.config_row(1,2,3 , id = '1,2,3' , weight = (0,0,1))
+        self.button.config_column(1,id = '1', weight = 1)
+        if type(parent)==MyPanedwindow:
+            parent.add(self)
+            parent.add(MyButton(parent,text='1'))
+
+class Collpasible(ttk.Labelframe , MyGrid):
+    def __init__(self,parent,**kw):
+        self.title = kw.pop('title','Default Title')
+        self.count = kw.pop('count',1)
+        super().__init__(parent,**kw)
+        self['text']='Collapsible'
+        self.label_title = MyLabel(self,text = self.title , anchor = 'center')
+        self.label_count = MyLabel(self,text = self.count)
+        self.up = '\u2b9d'
+        self.label_up = MyLabel(self,text = self.up)
+        # separators
+        self.vsep_1 = MySeparator(self,'v')
+        self.vsep_2 = MySeparator(self,'v')
+        self.hsep_1 = MySeparator(self,'h')
+        # do gridding
+        self.label_count.my_grid(row = (1,) , column = (1,) , sti = 'w')
+        self.label_title.my_grid(row = (1,) , column = (3,) , sti = 'we')
+        self.label_up.my_grid(row = (1,) , column = (5,) , sti = 'e')
+        self.vsep_1.my_grid(row = (1,) , column = (2,) , sti = 'nswe')
+        self.vsep_2.my_grid(row = (1,) , column = (4,) , sti = 'nswe')
+        self.hsep_1.my_grid(row = (2,) , column = (1,5) , sti = 'we')
+        self.label_count.config_row(1,2,3 , id = '1,2,3' , weight = (0,0,1))
+        self.label_count.config_column(1,2,3,4,5 , id = '1,2,3,4,5' , weight = (0,0,1,0,0))
+        
+        
+    def set_count(self,count):
+        self.count = count
+        self.label_count['text']=self.count
+    def set_title(self,text):
+        self.title = text
+        self.label_title['text']=self.title
+
+class Models(ttk.Labelframe, MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+        self.menu_addmodel = tk.Menu(self)
+        self.button_addmodel = MyMenuButton(self,text='Add Model',menu=self.menu_addmodel)
+        # drid
+        self.button_addmodel.my_grid(row = (1,) , column = (3,) , sti = 'e')
+        self.button_addmodel.config_row(1,id='1',weight = 0)
+        self.button_addmodel.config_column(1,2,3,id='1,2,3',weight = (1,1,0))
+        self.free_row = 2
+        self.menu_addmodel.add_command(label = 'Keras Sequential' , command = self.addmodel)
+    def addmodel(self):
+        tmp = Collpasible(self)
+        tmp.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe')
+        
+        
 if __name__ == '__main__':
     root = MyTk(400,300)
     m = Middle(root) # CORE
-    t = Tabs(root , switcher = m)
+    #PANED = MyPanedwindow(root , grid_self = {'row':(3,),'column':(1,2),'sti':'nswe'})
+
+    t = Tabs(root , switcher = m , grid_self = {'row':(2,),'column':(1,2),'sti':'we'})
     tabnames = ['Prepare Dataset','Create Model','Results']
     t.add(tabnames[0])
     t.add(tabnames[1])
     t.add(tabnames[2])
-    t.my_grid(row=(2,),column=(1,2),sti='we')
+    PANED = m.add_new(tabnames[0] , MyPanedwindow , kw_args = {'grid_self' : {'row':(3,),'column':(1,2),'sti':'nswe'} } )
+    #test_label = m.add_new(tabnames[1] , Label , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1] , 'anchor':'center'})
+    MODELS = m.add_new(tabnames[1] , Models , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1]} )
     t.config_column(1,2,id='1,2',weight=1) # CORE
     t.config_row(2,3,4,id = '2,3,4', weight = (0,1,0) ) # CORE
-    m.my_grid(row=(3,),column=(1,2),sti = 'nswe') # CORE
-    t2 = Tree(m , button_text = 'Open File Dialog')
-    t2.add_self_to_switcher(m, tabnames[0] , (1,) , (1,) )
-    m.add_new(tabnames[1] , Label , (1,) , (2,) , kw_args = {'text':'lab2'})
+    LEFT = Left(PANED,button_text = 'Open File Dialog') # CORE
     root.sizegrip((1,),(1,100))
     root.sizegrip((4,),(1,100))
     root.mainloop()
