@@ -26,6 +26,8 @@ class MyGrid:
             elif i == 'sti':
                 # sticky
                 self.grid_configure(sticky = t)
+            else:
+                self.grid_configure({i:t})
     def config_row_or_column(self,row,kw):
         # row is a tuple of row or columns
         new_kw = dict()
@@ -57,6 +59,25 @@ class MyGrid:
         new_kw = self.config_row_or_column(column, kw)
         for c,kw in new_kw.items():
             self.master.grid_columnconfigure(c,kw)
+
+class LabelFrame(tk.LabelFrame , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+
+class MyLabelFrame(ttk.Labelframe , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+  
+class Frame(tk.Frame , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+
+class MyFrame(ttk.Frame , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+  
+
+
 
 class Sizegrip(ttk.Sizegrip , MyGrid):
     def __init__(self,parent,**kw):
@@ -105,6 +126,9 @@ class MyMenuButton(ttk.Menubutton , MyGrid):
     
     def add_command(self,**kw):
         self.the_menu.add_command(kw)
+    
+    def add_separator(self):
+        self.the_menu.add_separator()
     
     def add_checkbutton(self,**kw):
         provide_variable = kw.pop('provide_variable',False)
@@ -411,41 +435,80 @@ class Left(ttk.Labelframe , MyGrid):
             parent.add(self)
             parent.add(MyButton(parent,text='1'))
 
-class Collpasible(ttk.Labelframe , MyGrid):
+class Collapsible(LabelFrame):
+    full_padx = 10
+    full_pady = 10
+    half_pady = 5
+    icon_up = '\u2b9d'
+    icon_down = '\u2b9f'
+    icon_x = '\u274c'
+    icon_reload = '\u27f3'
     def __init__(self,parent,**kw):
         self.title = kw.pop('title','Default Title')
-        self.count = kw.pop('count',1)
+        self.count = kw.pop('count',None)
         self.use_count = kw.pop('use_count',False)
+        self.use_x = kw.pop('use_x',False)
+        self.label_last_icon = kw.pop('label_last_icon','icon_up')
+        self.minimized = False
+        self.count_string_template = kw.pop('count_string_template','{:4}')
         super().__init__(parent,**kw)
-        self['labelanchor']='n'
-        self['text']='Collapsible'
-        self.label_title = MyLabel(self,text = self.title , anchor = 'center')
-        self.label_count = MyLabel(self,text = self.count)
-        self.up = '\u2b9d'
-        self.label_up = MyLabel(self,text = self.up)
+        self.star_frame = LabelFrame(self) #CORE main frame for "Data Shape" , etc
+        self.next_row = 1
+        #self['labelanchor']='n'
+        #self['text']='Collapsible'
+        self.label_title = MyLabel(self,text = self.title , anchor = 'center' , cursor = 'hand2')
+        self.label_count = MyLabel(self , text='')
+        self.label_last = Label(self,text = Collapsible.icon_x if self.use_x else getattr(Collapsible, self.label_last_icon )  , cursor = 'hand2' , anchor = 'center')
         # separators
         self.vsep_1 = MySeparator(self,'v')
         self.vsep_2 = MySeparator(self,'v')
         self.hsep_1 = MySeparator(self,'h')
+        self.hsep_2 = MySeparator(self,'h')
         # do gridding
-        if self.use_count:
-            self.label_count.my_grid(row = (1,) , column = (1,) , sti = 'wns')
-            self.vsep_1.my_grid(row = (1,) , column = (2,) , sti = 'nswe')
-        self.label_title.my_grid(row = (1,) , column = (3,) , sti = 'we')
-        self.vsep_2.my_grid(row = (1,) , column = (4,) , sti = 'nswe')
-        self.label_up.my_grid(row = (1,) , column = (5,) , sti = 'ens')
-        self.hsep_1.my_grid(row = (2,) , column = (1,5) , sti = 'we')
-        self.label_count.config_row(1,2,3 , id = '1,2,3' , weight = (0,0,1))
-        self.label_count.config_column(1,2,3,4,5 , id = '1,2,3,4,5' , weight = (0,0,1,0,0))
-        if not self.use_count:
-            self.label_title.my_grid(column = (1,3) )
+        self.hsep_1.my_grid(row = (1,) , column = (1,5) , sti = 'we')
+        self.label_count.my_grid(row = (2,) , column = (1,) , sti = 'we')
+        self.vsep_1.my_grid(row = (2,) , column = (2,) , sti = 'nswe')
+        self.label_title.my_grid(row = (2,) , column = (3,) , sti = 'we')
+        self.vsep_2.my_grid(row = (2,) , column = (4,) , sti = 'nswe')
+        self.label_last.my_grid(row = (2,) , column = (5,) , sti = 'we')
+        self.hsep_2.my_grid(row = (3,) , column = (1,5) , sti = 'we')
+        self.star_frame.my_grid(row = (4,) , column = (1,5) , sti = 'nswe')
+        self.label_count.config_row(1,2,3 , id = '1,2,3,4' , weight = (0,0,0,1))
+        self.label_count.config_column(1,2,3,4,5 , id = '1,2,3,4,1' , weight = (0,0,1,0,0))
         
-    def set_count(self,count):
-        self.count = count
-        self.label_count['text']=self.count
+        self.label_title.bind('<ButtonRelease>',self.event_button_minimize)
+        if self.use_count:
+            self.set_count(True)
+        else:
+            self.vsep_1.grid_remove()
+        
+        if self.use_x:
+            pass # IMPLEMENT DESTROY ON CLICKING "X" in SUBCLASSES
+        elif self.label_last_icon == 'icon_up':
+            self.label_last.bind('<ButtonRelease>',self.event_button_minimize)
+        self.next_row = 5
+
+    def set_count(self,count = None):
+        # True means set count text 'automatically'
+        # None -> clear count text and self.count variable
+        if count is True:
+            count = self.count
+        elif count is None:
+            count = ''
+            self.count = None
+        self.label_count['text']= self.count_string_template.format( count )
+    
     def set_title(self,text):
         self.title = text
         self.label_title['text']=self.title
+
+    def event_button_minimize(self,e):
+        self.minimized = not self.minimized
+        if self.label_last_icon == 'icon_up':
+            text = (Collapsible.icon_up,Collapsible.icon_down)[self.minimized]
+            self.label_last['text']=text
+        method = (tk.Grid.grid,tk.Grid.grid_remove)[self.minimized]
+        method(self.star_frame)
 
 class ModelsHome(ttk.Labelframe, MyGrid):
     def __init__(self,parent,**kw):
@@ -456,7 +519,7 @@ class ModelsHome(ttk.Labelframe, MyGrid):
             name = class_.model_name
             self.button_addmodel.add_command(label = name , command = lambda arg1 = class_ : self.addmodel(arg1))
         # drid
-        self.button_addmodel.my_grid(row = (1,) , column = (3,) , sti = 'e')
+        self.button_addmodel.my_grid(row = (1,) , column = (3,) , sti = 'ns' , pady = Collapsible.half_pady)
         self.button_addmodel.config_row(1,id='1',weight = 0)
         self.button_addmodel.config_column(1,2,3,id='1,2,3',weight = (1,1,0))
         self.free_row = 2
@@ -471,18 +534,19 @@ class ModelsHome(ttk.Labelframe, MyGrid):
         tmp.my_grid(row = (self.free_row,) , column = (1,3),sti = 'nswe')
         self.free_row += 1
 
-class Model(ttk.Labelframe , MyGrid):
+class Model(LabelFrame):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
         self.nodes = []
         self.nodes_count = 0
-        self['text']='Model'
+        #self['text']='Model'
+        #self['labelanchor']='n'
         self.label_name = MyLabel(self,text='Model Name:')
         self.label_name_value = Label(self,text='')
         self.entry_name = Entry(self,relief='solid') 
         self.label_type = MyLabel(self,text='Model Type:')
         self.label_type_value = Label(self,text='')
-        self.label_name_value.bind('<Button>',self.event_button_label_type_value)
+        self.label_name_value.bind('<ButtonRelease>',self.event_button_label_type_value)
         self.label_name_value.bind('<Enter>',self.event_enter_label_type_value)
         self.label_name_value.bind('<Leave>',self.event_leave_label_type_value)
         self.menubutton_action = MyMenuButton(self,provide_menu=True,text='Action')
@@ -531,20 +595,74 @@ class KerasModel(Model):
     static_count = 0
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
+        self.layers_count = 0
         KerasModel.static_count += 1
-        self.label_type_value['text']=self.model_name
+        self.label_type_value['text']=self.model_name # Model Type:Keras Sequential
+        self.menubutton_action.add_separator()
+        for l in ('Flatten','Convolutional','Pooling','Dense'):
+            self.menubutton_action.add_command(label=f'Add a {l} Layer',command = getattr(self, f'add_{l.lower()}_layer'))
+        self.layers = dict()
+        #Collapsible(self,title = 'Layers')
+        #self.layers.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe')
+        self.summary = Collapsible(self,title = 'Model Summary' , label_last_icon = 'icon_reload')
+        self.summary.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe' , padx = Collapsible.full_padx , pady = Collapsible.full_pady)
+        self.free_row += 1
     
-        self.layers = Collpasible(self,title = 'Layers')
-        self.layers.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe')
-        self.summary = Collpasible(self,title = 'Model Summary')
-        self.summary.my_grid(row = (self.free_row+1,) , column = (1,3) , sti = 'nswe')
-        self.free_row += 2
+    def add_layer(self,kw1=None,kw2=dict()):
+        # starting from 1
+        self.layers_count += 1
+        tmp = self.layers[self.layers_count] = Collapsible(self, **kw1)
+        tmp.label_last.bind('<ButtonRelease>',lambda e,arg2=tmp.count : self.delete_layer(e,arg2) )
+        for i,j in kw2.items():
+            # row and column spans
+            rs,cs = 1,1
+            # row and column 
+            r,c = i
+            if (len_i := len(i)) == 3:
+                r,rs,c = i
+            if len(i) == 4:
+                r,rs,c,cs = i
+            widget = j.pop('class')(tmp.star_frame,**j) # CORE j is kw
+            widget.config_column(1,2,3,id='1,1,1',weight=1) # once suffices
+            widget.config_row(r, id = f'{r}' , weight = 1)
+            widget.my_grid(row = (r,rs) , column = (c,cs) )
+        self.summary.my_grid(row = (self.free_row,) ) # reorder summary as last
+        tmp.my_grid(row = (self.free_row-1,) , column = (1,3) , sti = 'nswe' , padx = Collapsible.full_padx , pady = Collapsible.full_pady )
+        self.free_row += 1
+        
+    def delete_layer(self,e,count):
+        e.widget.master.destroy()
+        self.free_row -= 1
+    
+    def add_flatten_layer(self):
+        
+        kw1 = {'title':'Flatten' , 
+               'use_count':True , 
+               'count':self.layers_count+1 ,
+               'use_x':True, 
+               'count_string_template' : 'Layer {:4}'}
+        kw2 = {
+            (1,1):{'class':MyLabel,'text':'Data Shape'},
+            (1,2):{'class':Entry, 'relief':'solid'},
+            (1,3): {'class':MyMenuButton, 'provide_menu':True , 'text':'Options'}
+            }
+        self.add_layer(kw1,kw2)
+    
+    def add_convolutional_layer(self):
+        pass
+    
+    def add_pooling_layer(self):
+        pass
+    
+    def add_dense_layer(self):
+        pass
     
     def command_menubutton_action_collapse_all(self):
         value = self.menubutton_action.get_checkbutton_variable('Collapse All')
         # if True -> hide
         method = (tk.Grid.grid,tk.Grid.grid_remove)[value] # CORE
-        method(self.layers)
+        for l in self.layers.values():
+            method(l)
         method(self.summary)
     
 if __name__ == '__main__':
