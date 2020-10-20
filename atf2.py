@@ -93,7 +93,42 @@ class MyButton(ttk.Button , MyGrid):
 
 class MyMenuButton(ttk.Menubutton , MyGrid):
     def __init__(self,parent,**kw):
+        provide_menu = kw.pop('provide_menu',False)
+        kw.setdefault('direction','left')
         super().__init__(parent,**kw)
+        if provide_menu:
+            provided_menu_args = kw.pop('provide_menu_args',dict())
+            provided_menu_args.setdefault('tearoff',False)
+            self.the_menu = tk.Menu(parent,provided_menu_args)
+            self['menu']=self.the_menu
+            self.checkbutton_vars = dict()
+    
+    def add_command(self,**kw):
+        self.the_menu.add_command(kw)
+    
+    def add_checkbutton(self,**kw):
+        provide_variable = kw.pop('provide_variable',False)
+        if provide_variable:
+            varname = f'checkbutton_var_{kw["label"]}'
+            setattr(self, varname , tk.BooleanVar(value=False))
+            kw['variable'] = getattr(self, varname)
+
+        #print(f'{kw = }')
+        self.the_menu.add_checkbutton(**kw)
+    
+    def set_checkbutton_variable(self,name,value):
+        varname = f'checkbutton_var_{name}'
+        getattr(self, varname).set(value)
+    
+    def get_checkbutton_variable(self,name):
+        varname = f'checkbutton_var_{name}'
+        return getattr(self, varname).get()
+    
+    # implicity for BooleanVar(s) only
+    def flip_checkbutton_variable(self,name):
+        value = not self.get_checkbutton_variable(name)
+        self.set_checkbutton_variable(name, value)
+        return value
 
 class MySeparator(ttk.Separator , MyGrid):
     def __init__(self,parent,orient,**kw):
@@ -106,6 +141,33 @@ class MySeparator(ttk.Separator , MyGrid):
             orient = 'vertical'
         super().__init__(parent,orient=orient,**kw)
 
+class MyEntry(ttk.Entry , MyGrid):
+    def __init__(self,parent,**kw):
+        initial_text = kw.pop('text','')
+        super().__init__(parent,**kw)
+        self.variable = tk.StringVar(value=initial_text)
+        self['textvariable']=self.variable
+    
+    def set_text(self,text):
+        self.variable.set(text)
+    
+    def get_text(self):
+        return self.variable.get()
+
+class Entry(tk.Entry , MyGrid):
+    def __init__(self,parent,**kw):
+        initial_text = kw.pop('text','')
+        super().__init__(parent,**kw)
+        self.variable = tk.StringVar(value=initial_text)
+        self['textvariable']=self.variable
+    
+    def set_text(self,text):
+        self.variable.set(text)
+    
+    def get_text(self):
+        return self.variable.get()
+
+    
 class Label(tk.Label , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
@@ -353,7 +415,9 @@ class Collpasible(ttk.Labelframe , MyGrid):
     def __init__(self,parent,**kw):
         self.title = kw.pop('title','Default Title')
         self.count = kw.pop('count',1)
+        self.use_count = kw.pop('use_count',False)
         super().__init__(parent,**kw)
+        self['labelanchor']='n'
         self['text']='Collapsible'
         self.label_title = MyLabel(self,text = self.title , anchor = 'center')
         self.label_count = MyLabel(self,text = self.count)
@@ -364,15 +428,17 @@ class Collpasible(ttk.Labelframe , MyGrid):
         self.vsep_2 = MySeparator(self,'v')
         self.hsep_1 = MySeparator(self,'h')
         # do gridding
-        self.label_count.my_grid(row = (1,) , column = (1,) , sti = 'w')
+        if self.use_count:
+            self.label_count.my_grid(row = (1,) , column = (1,) , sti = 'wns')
+            self.vsep_1.my_grid(row = (1,) , column = (2,) , sti = 'nswe')
         self.label_title.my_grid(row = (1,) , column = (3,) , sti = 'we')
-        self.label_up.my_grid(row = (1,) , column = (5,) , sti = 'e')
-        self.vsep_1.my_grid(row = (1,) , column = (2,) , sti = 'nswe')
         self.vsep_2.my_grid(row = (1,) , column = (4,) , sti = 'nswe')
+        self.label_up.my_grid(row = (1,) , column = (5,) , sti = 'ens')
         self.hsep_1.my_grid(row = (2,) , column = (1,5) , sti = 'we')
         self.label_count.config_row(1,2,3 , id = '1,2,3' , weight = (0,0,1))
         self.label_count.config_column(1,2,3,4,5 , id = '1,2,3,4,5' , weight = (0,0,1,0,0))
-        
+        if not self.use_count:
+            self.label_title.my_grid(column = (1,3) )
         
     def set_count(self,count):
         self.count = count
@@ -381,22 +447,106 @@ class Collpasible(ttk.Labelframe , MyGrid):
         self.title = text
         self.label_title['text']=self.title
 
-class Models(ttk.Labelframe, MyGrid):
+class ModelsHome(ttk.Labelframe, MyGrid):
     def __init__(self,parent,**kw):
+        self.supply_model_classes = kw.pop('supply_model_classes',tuple())
         super().__init__(parent,**kw)
-        self.menu_addmodel = tk.Menu(self)
-        self.button_addmodel = MyMenuButton(self,text='Add Model',menu=self.menu_addmodel)
+        self.button_addmodel = MyMenuButton(self,provide_menu = True , text='Add Model')
+        for class_ in self.supply_model_classes:
+            name = class_.model_name
+            self.button_addmodel.add_command(label = name , command = lambda arg1 = class_ : self.addmodel(arg1))
         # drid
         self.button_addmodel.my_grid(row = (1,) , column = (3,) , sti = 'e')
         self.button_addmodel.config_row(1,id='1',weight = 0)
         self.button_addmodel.config_column(1,2,3,id='1,2,3',weight = (1,1,0))
         self.free_row = 2
-        self.menu_addmodel.add_command(label = 'Keras Sequential' , command = self.addmodel)
-    def addmodel(self):
-        tmp = Collpasible(self)
-        tmp.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe')
         
+        self.models_count = 0
+        self.models_refernces = []
         
+    def addmodel(self , class_ ):#**kw_args
+        tmp = class_(self)# CORE **kw_args
+        self.models_count += 1
+        self.models_refernces += [tmp]
+        tmp.my_grid(row = (self.free_row,) , column = (1,3),sti = 'nswe')
+        self.free_row += 1
+
+class Model(ttk.Labelframe , MyGrid):
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+        self.nodes = []
+        self.nodes_count = 0
+        self['text']='Model'
+        self.label_name = MyLabel(self,text='Model Name:')
+        self.label_name_value = Label(self,text='')
+        self.entry_name = Entry(self,relief='solid') 
+        self.label_type = MyLabel(self,text='Model Type:')
+        self.label_type_value = Label(self,text='')
+        self.label_name_value.bind('<Button>',self.event_button_label_type_value)
+        self.label_name_value.bind('<Enter>',self.event_enter_label_type_value)
+        self.label_name_value.bind('<Leave>',self.event_leave_label_type_value)
+        self.menubutton_action = MyMenuButton(self,provide_menu=True,text='Action')
+        self.menubutton_action.add_checkbutton(label='Collapse All',provide_variable = True , command=self.command_menubutton_action_collapse_all)
+        self.entry_name.bind('<KeyPress-Return>',self.event_entry_name_return)
+        self.entry_name.focus()
+        #grid
+        self.label_name.config_row(1,id='1',weight = 0)
+        self.label_name.config_column(1,2,3,id='1,2,3',weight = (0,1,0))
+        self.menubutton_action.my_grid(row = (1,2) , column = (3,) , sti = 'nswe')
+        self.label_name.my_grid(row = (1,) , column = (1,) , sti = 'w')
+        self.entry_name.my_grid(row = (1,) , column = (2,) , sti = 'we')
+        self.label_name_value.my_grid(row = (1,) , column = (2,) , sti = 'we')
+        self.label_name_value.grid_remove()
+        self.label_type.my_grid(row = (2,) , column = (1,) , sti = 'e')
+        self.label_type_value.my_grid(row = (2,) , column = (2,) , sti = 'we')
+        self.free_row = 3
+    
+    def event_button_label_type_value(self,e):
+        e.widget.grid_remove()
+        self.entry_name.delete(0,'end')
+        self.entry_name.insert(0, e.widget['text'])
+        self.entry_name.grid()
+    
+    def event_enter_label_type_value(self,e):
+        e.widget['relief'] = 'solid'
+    
+    def event_leave_label_type_value(self,e):
+        e.widget['relief'] = 'flat'
+    
+    def event_entry_name_return(self,e):
+        name = e.widget.get()
+        if name.strip() == '':
+            # from the derived class
+            name = f'{self.model_name} Model {self.static_count}'
+        self.label_name_value['text']=name
+        e.widget.grid_remove()
+        self.label_name_value.grid()
+    
+    def command_menubutton_action_collapse_all(self):
+        # exists only to be overriden
+        pass
+
+class KerasModel(Model):
+    model_name = 'Keras Sequential'
+    static_count = 0
+    def __init__(self,parent,**kw):
+        super().__init__(parent,**kw)
+        KerasModel.static_count += 1
+        self.label_type_value['text']=self.model_name
+    
+        self.layers = Collpasible(self,title = 'Layers')
+        self.layers.my_grid(row = (self.free_row,) , column = (1,3) , sti = 'nswe')
+        self.summary = Collpasible(self,title = 'Model Summary')
+        self.summary.my_grid(row = (self.free_row+1,) , column = (1,3) , sti = 'nswe')
+        self.free_row += 2
+    
+    def command_menubutton_action_collapse_all(self):
+        value = self.menubutton_action.get_checkbutton_variable('Collapse All')
+        # if True -> hide
+        method = (tk.Grid.grid,tk.Grid.grid_remove)[value] # CORE
+        method(self.layers)
+        method(self.summary)
+    
 if __name__ == '__main__':
     root = MyTk(400,300)
     m = Middle(root) # CORE
@@ -409,7 +559,7 @@ if __name__ == '__main__':
     t.add(tabnames[2])
     PANED = m.add_new(tabnames[0] , MyPanedwindow , kw_args = {'grid_self' : {'row':(3,),'column':(1,2),'sti':'nswe'} } )
     #test_label = m.add_new(tabnames[1] , Label , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1] , 'anchor':'center'})
-    MODELS = m.add_new(tabnames[1] , Models , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1]} )
+    MODELS = m.add_new(tabnames[1] , ModelsHome , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1] , 'supply_model_classes': (KerasModel,) } )
     t.config_column(1,2,id='1,2',weight=1) # CORE
     t.config_row(2,3,4,id = '2,3,4', weight = (0,1,0) ) # CORE
     LEFT = Left(PANED,button_text = 'Open File Dialog') # CORE
