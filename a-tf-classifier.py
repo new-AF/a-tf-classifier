@@ -439,7 +439,9 @@ class Gallery(ttk.Labelframe):
             y,x = yx
             c,p = cp
             #print(f'{y=} {x=} {c=} {n[:11]=}')
-            self.objpil[c] = Image.open(p)
+            tmp = self.objpil[c] = Image.open(p).convert('L').resize((1024//2,1024//2))
+            #tmp2 = np.array(tmp,dtype='uint8')
+            #print(n,tmp2.shape)
             self.objthumb[c] = self.objpil[c].resize((self.thumbW,self.thumbH))
             #self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
             self.objimgtk[c] = ImageTk.PhotoImage(self.objthumb[c])
@@ -956,10 +958,18 @@ class GalleryManager:
 
         img2 = dict()
         lab2 = dict()
-        for cat in img:
-            img2[cat] = list( map( lambda x : np.array(x) , img[cat] ) )
-            lab2[cat] =  np.array(lab[cat] )
-        print()
+        for cat,imgs in img.items():
+            tmp_ndarray = np.array( [np.array(x,dtype='uint8') for x in imgs] , dtype='uint8' )
+            len_tuple = len(tmp_ndarray.shape)
+            tmp_labels = np.array( lab[cat] )
+            if len_tuple == 3:
+                the_len , image_width , image_height = tmp_ndarray.shape
+                tmp_ndarray = tmp_ndarray.reshape(the_len , image_width , image_height , 1)
+                tmp_labels = tf.keras.utils.to_categorical(tmp_labels , num_classes = len(set(tmp_labels)) )
+            img2[cat] = tmp_ndarray
+            lab2[cat] = tmp_labels
+        
+   
         return [img2,lab2]
 
 #asses path from the dialog
@@ -1355,9 +1365,11 @@ class Slide(ttk.Frame):
         l.bind('<Button>',bn)
 
     def sel(self,e=None, j=None):
+        
         j = self.id2[e.widget] if e is not None else j
         ll = self.under[j]
-
+        #if j == 1:
+        #    GM.exportnumpy()
         self.active = self.id1[j]
         self.jactive = j
         for l,ff in zip(self.under.values(),self.ff.values()):
@@ -1396,7 +1408,7 @@ class Updown(ttk.Labelframe):
         self.line5 = ttk.Separator(self,orient = 'vertical')
         self.line6 = ttk.Separator(self,orient = 'vertical')
         self.lhead = tk.Frame(self)
-        self.lhead.L = tk.Label(self.lhead,text = self.bannertext, anchor = 'center', cursor='hand2',bg='red')
+        self.lhead.L = tk.Label(self.lhead,text = self.bannertext, anchor = 'center', cursor='hand2')#,bg='red'
         self.lhead.I = tk.Label(self.lhead, cursor='hand2')
         self.lhead.L.bind('<ButtonPress>',self.collpase)
         self.lhead.I.bind('<ButtonPress>',self.collpase)
@@ -1741,8 +1753,8 @@ class K(Slot):
         'call':tk.Entry,
         'call_args':dict(relief='solid')
         },
-        menu = { 'command' : dict(label='Default: 128',
-        func=self.neuron_count , func_args = [128]) })
+        menu = { 'command' : dict(label='Default: 8',
+        func=self.neuron_count , func_args = [8]) })
 
         id2 = 2
         self.add_row(m,c,id2,'dense',left={
@@ -1770,6 +1782,7 @@ class K(Slot):
         dname = 'conv'
         id2 = 1
         if c == 1:
+            hard_coded_width , hard_coded_height = (1024//2,1024//2)
             self.add_row(m,c,id2,dname,left={
             'call':ttk.Label,
             'call_args':dict(text='Data Shape')
@@ -1778,8 +1791,8 @@ class K(Slot):
             'call':tk.Entry,
             'call_args':dict(relief='solid')
             },
-            menu = { 'command' : dict(label='Default: (1024,1024,3)',
-            func=self.conv_1st , func_args = ['(1024,1024,3)'])  })
+            menu = { 'command' : dict(label=f'Default: ({hard_coded_width},{hard_coded_width},1)',
+            func=self.conv_1st , func_args = [f'({hard_coded_width},{hard_coded_width},1)'])  })
 
             id2 += 1
 
@@ -1959,14 +1972,17 @@ class K(Slot):
         imgs , labels = globals()['GM'].exportnumpy()
 
         self.traini,self.trail = imgs['training'],labels['training']
-
-        self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['acc','loss'])
+        self.test_images,self.trst_labels = imgs['validation'],labels['validation']
+        
+        self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['acc'])
 
         threading.Thread(target=self.Threadrun).start()
 
     def Threadrun(self):
-        history = self.model.fit(self.traini,self.trail,epochs = 20)
-
+        history = self.model.fit(self.traini,self.trail,batch_size=1,epochs = 10)
+        print('Evaluating the model on the test data')
+        self.model.evaluate(self.test_images,self.trst_labels,batch_size=1)
+        #print('history complete!',history)
 
 #--------------------------------------------------------------------------------------------#
 class Run:
@@ -2094,8 +2110,8 @@ this = Frame1Model(frame1)
 
 #/frame0/exe entry
 #/frame0/exe button
-(debugbutton := ttk.Button(frame0,command=debug,text='Execute')).pack(expand = 0,side = TOP, fill = X)
-(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11')).pack(expand = 0,side = TOP, fill = X)
+(debugbutton := ttk.Button(frame0,command=debug,text='Execute'))#.pack(expand = 0,side = TOP, fill = X)
+(entryfor0 := ttk.Entry(frame0,textvariable=debugvar,font='courier 11'))#.pack(expand = 0,side = TOP, fill = X)
 
 entryfor0.bind('<Key-Return>',debug)
 
