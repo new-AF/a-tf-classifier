@@ -819,6 +819,7 @@ class GalleryManager:
                 cs = random.sample(cs, txt)
                 aw.cg.remove_selected(g,cs)
                 g.use()
+        _hideToplevel(self.alloc_win)
 
     def fill_alloc(self,tup):
         aw = self.alloc_win
@@ -946,8 +947,10 @@ class GalleryManager:
     def exportnumpy(self):
         img = dict()
         lab = dict()
+        lab_dict = dict()
 
         for i,d in self.galleries.items():
+            lab_dict[self.class_id[i]] = i
             for cat,g in d.items():
                 if cat not in img:
                     img[cat] = []
@@ -968,9 +971,9 @@ class GalleryManager:
                 tmp_labels = tf.keras.utils.to_categorical(tmp_labels , num_classes = len(set(tmp_labels)) )
             img2[cat] = tmp_ndarray
             lab2[cat] = tmp_labels
-        
-   
-        return [img2,lab2]
+
+
+        return [img2,lab2,lab_dict]
 
 #asses path from the dialog
 class Path:
@@ -1365,7 +1368,7 @@ class Slide(ttk.Frame):
         l.bind('<Button>',bn)
 
     def sel(self,e=None, j=None):
-        
+
         j = self.id2[e.widget] if e is not None else j
         ll = self.under[j]
         #if j == 1:
@@ -1646,8 +1649,8 @@ class K(Slot):
     def update_actions(self):
         i = self.mact.index('Collapsed')
         self.mact.insert_separator(i)
-        for j,c in zip(['Add a Pooling Layer','Add a Convolutional Layer','Add a Dense Neuron Layer','Add a Flattening Layer'],
-        ['addPool','addConvolutional','addNeuron','addFlatten']):
+        for j,c in zip(reversed(['Add a Convolutional Layer','Add a Pooling Layer','Add a Flattening Layer','Add a Dense Neuron Layer']),
+        reversed(['addConvolutional','addPool','addFlatten','addNeuron'])):
             self.mact.insert_command(i,label=j,command = lambda this=c: getattr(self,this)() )
     def addLayer(self, ftext = 'Some Layer', mtext = ''):
         c = self.update_count()
@@ -1767,6 +1770,8 @@ class K(Slot):
         },
         menu = { 'command' : dict(label='Default: "relu"',
         func=self.neuron_af , func_args = ['"relu"']) })
+
+
 
     def neuron_af(self,c,cc,func):
         w = self.dense[c][cc]['righ']
@@ -1951,6 +1956,7 @@ class K(Slot):
 
     def gen(self):
         self.model = m = tf.keras.models.Sequential()
+        #print('K:->gen->self.model',self.model)
         tf.keras.backend.clear_session()
         self.label_summary = []
 
@@ -1969,20 +1975,39 @@ class K(Slot):
         m.summary(print_fn=print2)
         self.scrolldown_and_bbox(self.c)
     def run(self):
-        imgs , labels = globals()['GM'].exportnumpy()
-
+        imgs , labels , labels_dict = globals()['GM'].exportnumpy()
+        self.labels_dict = labels_dict
         self.traini,self.trail = imgs['training'],labels['training']
-        self.test_images,self.trst_labels = imgs['validation'],labels['validation']
-        
-        self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['acc'])
+        self.test_images,self.test_labels = imgs['validation'],labels['validation']
+
+        self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['accuracy'])
 
         threading.Thread(target=self.Threadrun).start()
 
     def Threadrun(self):
-        history = self.model.fit(self.traini,self.trail,batch_size=1,epochs = 10)
-        print('Evaluating the model on the test data')
-        self.model.evaluate(self.test_images,self.trst_labels,batch_size=1)
-        #print('history complete!',history)
+        history = self.model.fit(self.traini,self.trail,batch_size=1,epochs = 1,steps_per_epoch=2)
+        #print('Evaluating the model on the test data',self.test_images,self.test_labels)
+        self.model.evaluate(self.test_images,self.test_labels,batch_size=1)
+        #print('history complete!',history,dir(history))
+        # `np.argmax(model.predict(x), axis=-1) multi-class classification   (e.g. if it uses a `softmax` last-layer activation).`,
+        # `(model.predict(x) > 0.5).astype("int32") if your model does binary classification   (e.g. if it uses a `sigmoid` last-layer activation)
+        percentages = self.model.predict(self.traini)
+        percentages = np.round(percentages*100 , decimals = 3)
+        classes = np.argmax(percentages, axis=-1)
+        path = filedialog.askdirectory(initialdir = os.getcwd, title = 'Select A Path to Save the Predicted Imageds')
+        if path:
+            labels_path = dict()
+            for the_id,i in self.labels_dict.items(): # i is label
+                joined_path = os.path.join(path,i)
+                os.mkdir(joined_path)
+                labels_path[the_id] = joined_path
+
+            for i,c,percent,count in zip(self.traini,classes,percentages,range(1,1+len (self.traini) )):
+                label = self.labels_dict[c]
+                path = labels_path[c]
+                filename = " ".join([f'{p}%' for p in percent])
+                Image.fromarray(np.reshape(i,(512,512))).save(os.path.join(path, f'{label} {count} {filename}.png' ))
+                #print(i,c,self.labels_dict[c])
 
 #--------------------------------------------------------------------------------------------#
 class Run:
