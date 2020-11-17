@@ -945,16 +945,19 @@ class GalleryManager:
             self.show(id)
 
     def exportnumpy(self):
+        actual=dict()
         img = dict()
         lab = dict()
         lab_dict = dict()
 
         for i,d in self.galleries.items():
             lab_dict[self.class_id[i]] = i
+            for cat,_ in d.items():
+                img.setdefault(cat,[])
+                lab.setdefault(cat,[])
+                actual.setdefault(cat,[])
             for cat,g in d.items():
-                if cat not in img:
-                    img[cat] = []
-                    lab[cat] = []
+                actual[cat] += [i] * len(g.objpil)
                 img[cat] += g.objpil.values()
                 lab[cat] += [self.class_id[i]] * len(g.objpil)
 
@@ -973,7 +976,7 @@ class GalleryManager:
             lab2[cat] = tmp_labels
 
 
-        return [img2,lab2,lab_dict]
+        return [img2,lab2,lab_dict,actual]
 
 #asses path from the dialog
 class Path:
@@ -1578,7 +1581,7 @@ class Slot(tk.Frame):
 
     def init_main_details(self):
 
-        self.details = Updown(self,banner_text='Model Details',text = 'init_main_details')
+        self.details = Updown(self,banner_text='Model Details')#,text = 'init_main_details'
         self.details.main[0].config(text = 'Layers')
         #TY
         #self.details.pack(side=TOP,expand=1,fill=BOTH , pady = [0, 10])
@@ -1586,7 +1589,7 @@ class Slot(tk.Frame):
 
     def init_main_summary(self):
 
-        self.summary = Updown(self,banner_text='Model Summary',text = 'init_main_summary')
+        self.summary = Updown(self,banner_text='Model Summary')#,text = 'init_main_summary'
         #self.summary.pack(side=TOP,expand=1,fill=BOTH , pady = 10)
         self.summary.grid(row=3,rowspan = 1, column = 0, columnspan =3, sticky='nswe')
         self.summary.bind('<Configure>',self.once_config)
@@ -1975,9 +1978,9 @@ class K(Slot):
         m.summary(print_fn=print2)
         self.scrolldown_and_bbox(self.c)
     def run(self):
-        imgs , labels , labels_dict = globals()['GM'].exportnumpy()
+        imgs , labels , labels_dict , self.actual_labels = globals()['GM'].exportnumpy()
         self.labels_dict = labels_dict
-        self.traini,self.trail = imgs['training'],labels['training']
+        self.traini , self.trail , self.actual_labels_train = imgs['training'],labels['training'],self.actual_labels['training']
         self.test_images,self.test_labels = imgs['validation'],labels['validation']
 
         self.model.compile(optimizer='adam', loss = 'categorical_crossentropy',metrics = ['accuracy'])
@@ -1985,14 +1988,14 @@ class K(Slot):
         threading.Thread(target=self.Threadrun).start()
 
     def Threadrun(self):
-        history = self.model.fit(self.traini,self.trail,batch_size=1,epochs = 1,steps_per_epoch=2)
+        history = self.model.fit(self.traini,self.trail,batch_size=1,epochs = 10)
         #print('Evaluating the model on the test data',self.test_images,self.test_labels)
         self.model.evaluate(self.test_images,self.test_labels,batch_size=1)
         #print('history complete!',history,dir(history))
         # `np.argmax(model.predict(x), axis=-1) multi-class classification   (e.g. if it uses a `softmax` last-layer activation).`,
         # `(model.predict(x) > 0.5).astype("int32") if your model does binary classification   (e.g. if it uses a `sigmoid` last-layer activation)
         percentages = self.model.predict(self.traini)
-        percentages = np.round(percentages*100 , decimals = 3)
+        #percentages = np.round(percentages , decimals = 3)
         classes = np.argmax(percentages, axis=-1)
         path = filedialog.askdirectory(initialdir = os.getcwd, title = 'Select A Path to Save the Predicted Imageds')
         if path:
@@ -2001,12 +2004,12 @@ class K(Slot):
                 joined_path = os.path.join(path,i)
                 os.mkdir(joined_path)
                 labels_path[the_id] = joined_path
-
-            for i,c,percent,count in zip(self.traini,classes,percentages,range(1,1+len (self.traini) )):
-                label = self.labels_dict[c]
+            max_width = max([len(i) for i in self.labels_dict.values()])
+            for i,actual_label,c,percent,count in zip(self.traini,self.actual_labels_train,classes,percentages,range(1,1+len (self.traini) )):
+                #label = self.labels_dict[c] # predicted
                 path = labels_path[c]
-                filename = " ".join([f'{p}%' for p in percent])
-                Image.fromarray(np.reshape(i,(512,512))).save(os.path.join(path, f'{label} {count} {filename}.png' ))
+                filename =f'({round(np.max(percent),3)})'
+                Image.fromarray(np.reshape(i,(512,512))).save(os.path.join(path, f'{actual_label} {count:^{max_width}} {filename:^5}.png' ))
                 #print(i,c,self.labels_dict[c])
 
 #--------------------------------------------------------------------------------------------#
