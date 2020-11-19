@@ -2,12 +2,10 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import tkinter.font as font
 import tkinter.filedialog as filedialog
-import math
+import threading
 import os
-from PIL import Image
-from PIL import ImageTk
-
-
+from PIL import Image,ImageTk
+import math
 
 class MyGrid:
     full_pad = 10
@@ -84,6 +82,92 @@ class Sizegrip(ttk.Sizegrip , MyGrid):
     def __init__(self,parent,**kw):
         super().__init__(parent,**kw)
 
+class Toplevel(tk.Toplevel):
+    def __init__(self,parent,visible,destroy_or_hide_on_x,**kw):
+        self.visible=visible
+        super().__init__(parent, **kw)
+        self.set_hidden(visible)
+        self.set_on_x(destroy_or_hide_on_x.lower())
+    
+    def set_on_x(self,destroy_or_hide):
+        if destroy_or_hide == 'hide':
+            self.wm_protocol("WM_DELETE_WINDOW" , func = self.hide)
+    
+    def set_hidden(self,x=None):
+        x = x if x is not None else self.visible
+        (self.hide,self.show)[self.visible]()
+        
+    def hide(self):
+        self.withdraw()
+        self.visible=False
+        
+    def show(self):
+        self.deiconify()
+        self.visible=True
+        
+class ImageLoading(Toplevel):
+    def __init__(self,parent,**kw):
+        self.parent2 = kw.pop('parent2')
+        super().__init__(parent, False, 'destroy') # visivle = False
+        self.title('Loading Images')
+        self.internal_canvas=Canvas(self,provide_frame={'borderwidth':1},grid_data={'row':(2,),'column':(1,),'sti':'nswe'},
+            provide_scrolls={'orient':'both','v_grid_data':{'row':(2,),'column':(2,),'sti':'ens'},'h_grid_data':{'row':(3,),'column':(1,2),'sti':'swe'}})
+        self.internal_canvas.config_column(1,2,id='1,2',weight=(1,0))
+        self.internal_canvas.config_row(1,2,id='1,2',weight=(0,1))
+        self.next_row=1
+        self.the_dict = dict()
+        
+    def setup(self):
+        max_len = self.parent2.Categories['max_category_string_length']
+        for name,sub_dict in self.parent2.D.items():
+            collapse = Collapsible(self.internal_canvas.internal_frame,
+                              count_string_template = 'Class {:4}',
+                              title = name,
+                              use_count = True,
+                              count = self.next_row)
+            collapse.my_grid(row=(self.next_row,),column=(1,),sti='nswe',padx=MyGrid.full_pad,pady=MyGrid.full_pad)
+            progress = MyProgressBar(collapse.star_frame)
+            loading_label1 = MyLabel(collapse.star_frame,template = '{:%d}'%max_len ,anchor='center')
+            loading_label2 = MyLabel(collapse.star_frame,text = 'x.png',anchor='center')
+            # grid
+            self.the_dict[name] = collapse #CORE
+            collapse.The_label1 = loading_label1
+            collapse.The_label2 = loading_label2
+            collapse.The_progress = progress
+            progress.my_grid(row=(1,),column=(1,3),sti='we')
+            loading_label1.my_grid(row=(2,),column=(1,3),sti='we')
+            loading_label2.my_grid(row=(3,),column=(1,3),sti='we')
+            if self.next_row == 1:
+                # config row & columns
+                pass
+                collapse.config_column(1,2,id='1,2',weight=(1,0))
+                collapse.config_row('all',id='all',weight=1)
+            # fix later
+            progress.config_column(1,2,3,id='1,2,3',weight=1)
+            progress.config_row('all',id='all',weight=1)
+            
+            self.next_row += 1
+            #collapse = MyLabel(self.internal_canvas.internal_frame,text='Loading : ')
+            #tmp2 = MyLabel(self.internal_canvas.internal_frame,text=name)
+            #collapse.my_grid(row=(1,),column=(1,),sti='we')
+            #collapse.my_grid(row=(2,),column=(1,),sti='we')
+        
+    def show_summary(self):
+        pass
+    
+    def set_label1(self,key,**kw):
+        self.the_dict[key].The_label1.config(**kw)
+    
+    def set_label2_progress(self,key,**kw):
+        self.the_dict[key].The_label2.config(**kw)
+        self.the_dict[key].The_progress.step()
+        
+    def set_progress(self,key,**kw):
+        self.the_dict[key].The_progress.config(**kw)
+
+    def minimize(self,key):
+        self.the_dict[key].event_button_minimize(None) # e=None
+            
 class MyTk(tk.Tk):
     def resize(self, w = None , h = None):
         self.w = w if w else self.winfo_reqwidth()
@@ -223,6 +307,8 @@ class Canvas(tk.Canvas , MyGrid):
         self.use_frame = kw.pop('use_frame',False)
         self.provide_scrolls = kw.pop('provide_scrolls',False)
         self.grid_data = kw.pop('grid_data',False)
+        self.v_scroll = None
+        self.h_scroll = None
         super().__init__(parent,**kw)
         if self.provide_frame:
             self.internal_frame = Frame(self,**self.provide_frame) #provide_frame dict() kw
@@ -231,19 +317,20 @@ class Canvas(tk.Canvas , MyGrid):
         if self.provide_scrolls:
             # provide_scrolls : dict and has location in parent to grid scrollbars to
             orient = self.provide_scrolls.pop('orient',False)
+            parent = self.provide_scrolls.pop('parent',parent)
             if orient:
-                orient=orient.lower()
-                orient = ('v','h') if orient == 'both' else (orient,)
+                orient = ((orient,),('v','h'))[orient=='both']
                 if 'v' in orient:
-                    v = True
-                    self.v_scroll = MyScrollbar(parent,orient='vertical',command=self.yview)
-                    self['yscrollcommand']=self.v_scroll.set
-                    self.v_scroll.my_grid(**self.provide_scrolls['v_grid_data'])
+                    self['yscrollcommand']=self.v_scroll
+                    self.v_scroll = MyScrollbar(parent,orient='vertical',command = self.yview)
+                    if self.provide_scrolls.get('v_grid_data',None):
+                        self.v_scroll.my_grid(**self.provide_scrolls['v_grid_data'])
                 if 'h' in orient:
-                    h = True
-                    self.h_scroll = MyScrollbar(parent,orient='horizontal',command=self.xview)
-                    self['xscrollcommand']=self.h_scroll.set
-                    self.h_scroll.my_grid(**self.provide_scrolls['h_grid_data'])
+                    self['xscrollcommand']=self.h_scroll
+                    self.h_scroll = MyScrollbar(parent,orient='horizontal',command = self.xview)
+                    if self.provide_scrolls.get('v_grid_data',None):
+                        self.h_scroll.my_grid(**self.provide_scrolls['h_grid_data'])
+                
         if self.grid_data:
             self.my_grid(**self.grid_data)
     
@@ -283,120 +370,104 @@ class Label(tk.Label , MyGrid):
 
 class MyLabel(ttk.Label , MyGrid):
     def __init__(self,parent,**kw):
+        self.template = kw.pop('template',None)
+        self.provide_variable = kw.pop('provide_variable',False)
         super().__init__(parent,**kw)
+        if self.provide_variable:
+            self.internal_variable = tk.StringVar(value = kw.get('text',''))
+            self['textvariable'] = self.internal_variable
+        self.backup_text = None
+    
+    def set_text(self,text):
+        if self.template is not None:
+            text = self.template.format(text)
+        if self.provide_variable:
+            self.internal_variable.set(text)
+        else:
+            self['text'] = text
+        self.backup_text = text
+    
+    def get_text(self):
+        return self.backup_text
 
 class Tree(ttk.Treeview , MyGrid):
     def __init__(self,parent,**kw):
-        self.L = kw.pop('label')
+        self.parent2 = kw.pop('parent2')
         super().__init__(parent,**kw)
-        self.tmp_label = Label(parent)
-        self.tmp_font = font.Font(font=self.tmp_label['font'])
+        
+        self.tmp_font = font.Font(font=self.master.class_label['font'])
         self.yes='\u2714'
         self.no='\u274c'
-        self.D = dict() # CORE
-        self.column_names = {'class':'Class','uncat':'Uncategorized','train':'Training','valid':'Validation'}
-        self.column_width = max(list([self.tmp_font.measure(i) for i in self.column_names.values()])) # CORE uniform column width +11 is a hack b.c. .measure give ~90% of actual width
-        self.column_width = math.ceil(1.3*self.column_width) # 30% more width
-        self['columns']=list(self.column_names.keys())
-        self.filter_images = lambda x: x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tif')
+        #self.D = dict() # access from self.parent2.D
+        self.column_names = ('Class',)+self.parent2.Categories['tuple_categories']
+        self.column_width = max(list([self.tmp_font.measure(i) for i in self.column_names])) # CORE uniform column width +11 is a hack b.c. .measure give ~90% of actual width
+        #self.column_width = math.ceil(1.3*self.column_width) # 30% more width
+        self['columns']=self.column_names
+        self.filter_images = lambda x: x[x.rfind('.'):] in ('.png','.jpg','.jpeg','.tiff','.tif','.gif')
         self.filter_dir_validation = lambda x: x.lower() == 'validation'
         self.filter_dir_training = lambda x: x.lower() == 'training'
-        for i,j in self.column_names.items():
+        for i in self.column_names:
             anchor = 'center'
-            self.heading(i, text=j , anchor = anchor)
+            self.heading(i, text=i , anchor = anchor)
             self.column(i , anchor = anchor,stretch=0,width=self.column_width)
         self.column('#0',width = self.column_width // 2 , anchor = 'w')
         # class name label
         self.bind('<<TreeviewSelect>>',self.event_treeview_select)
-        
+
     def event_treeview_select(self,e):
         #print (self,e,e.widget.focus())
         name = e.widget.focus().split('/')[0]
-        self.set_class_name(name)
-    def set_class_name(self,text):
-        self.L['text']=f'"{text}"'
-    def reset_class_name(self):
-        self.L['text']=''
-    def add_self_to_switcher(self, *args):
-        self.switcher , groupname , r , c = args
-        self.L.my_grid(row = r, column = c)
-        r = (r[0]+1,*r[1:])
-        self.button.my_grid(row = r , column = c) # CORE
-        r = (r[0]+1,*r[1:])
-        self.my_grid(row = r , column = c , sti = 'nswe') # CORE
-        self.switcher.add_old(groupname , self.button , None , None)
-        self.switcher.add_old(groupname , self , None , None)
-        self.config_row(r[0],id='000',weight=0)
-    def open_file_dialog(self):
-        path = filedialog.askdirectory(initialdir = '.', title = '')
-        #path = 'C:/Users/abdullah/Documents/a-tf-classifier/576013_1042828_bundle_archive/COVID-19 Radiography Database'
-        self.resolve(path)
-    
+        self.parent2.class_selected(name)
+  
     def update_tree(self):
         c = 0
-        for i,sub_dict in self.D.items():
-            self.insert('', c, iid = i , values = (i,
-                                                   sub_dict['uncat_count'] if sub_dict['uncat_count'] > 0 else self.no,
-                                                   sub_dict['train_count'] if sub_dict['train_count'] > 0 else self.no,
-                                                   sub_dict['valid_count'] if sub_dict['valid_count'] > 0 else self.no,
-                                                    ) ) # CORE
-            for jj,ii in enumerate(('uncat','train','valid')):
-                iid = '%s/%s'%(i,ii)
-                values_template = ['',]*4
-                self.insert(i, jj, iid = iid , values=self.column_names[ii] )
+        for i,sub_dict in self.parent2.D.items():
+            values = [cat['count'] if (cat['count'] is not None) else self.no for (cat_name,cat) in sub_dict.items() ]
+            #print(values)
+            self.insert('', c, iid = i , values = (i, *values )) # CORE
+            for cat_count,cat in self.parent2.Categories['count_categories']:
+                iid = '%s/%s'%(i,cat)
+                values_template = ['',]*len(self.column_names)
+                #print(values_template)
+                self.insert(i, cat_count, iid = iid , values = cat )
                 #self.insert(i, 1, iid = '%s/train'%i , values=self.column_names['train'] )
-                for jjj,iii in enumerate(sub_dict[ii]):
-                    #jjj is count
-                    #iii is the FILE NAME
-                    values_template[jj+1] = iii
-                    self.insert(iid, jjj, values = values_template)
+                for file_count,file_name in enumerate(sub_dict[cat]['images']):
+                    values_template[cat_count] = file_name
+                    self.insert(iid, file_count, values = values_template)
             
             c+=1
-    
+        
     def resolve(self,path):
         obj = os.walk(os.path.abspath(path))
-        path , d , _ = next(obj)
-        d = [(i,os.path.join(path,i)) for i in d]
-        D = {i : {'class':i,'path':fulld , **self.subresolve(fulld)} for i,fulld in d}
-#         for i,fulld in d:
-#             tmp = self.subresolve(fulld)
-#             D.update(tmp)
-#         print(D)
-        self.D = D
+        self.sub_resolve(path)
         self.update_tree()
-        
-    def subresolve(self,path , recursive_call = False):
-        obj = os.walk(path)
-        path , d , f = next(obj)
-        
-        f = list(filter(self.filter_images , f))
-        if not recursive_call:
-            # dtrain & dvalid are each list of of potential respective dir names.
-            # ONLY 1 / 1ST DIR NAME IS CHOSEN
-            dtrain = list(filter(self.filter_dir_training,d))[:1]
-            dvalid = list(filter(self.filter_dir_validation,d))[:1]
-        else:
-            return {recursive_call : f , f'{recursive_call}_path':path , f'{recursive_call}_count': len(f)}
-        
-        # uncat is a LIST of image file names.
-        D = dict(uncat = f , uncat_path = path , uncat_count = len(f) ) # CORE
-        
-        #explore files in dtrain & dvalid dirs.
-        if dtrain:
-            dtrain = os.path.join(path,dtrain)
-            D.update( self.resolve(dtrain, 'train') )
-        else:
-            # train is a LIST of image file names.
-            D.update( {'train' : [] , 'train_path' : None , 'train_count' : 0} )
-        
-        if dvalid:
-            dvalid = os.path.join(path , dvalid)
-            D.update( self.resolve(dvalid , 'valid') )
-        else:
-            D.update( {'valid' : [] , 'valid_path' : None , 'valid_count' : 0} )
-        
-        return D
+        print(self.parent2.D)
+        print('tree->resolved')
+        self.parent2.tree_has_resolved()
 
+    def sub_resolve(self,root_path):
+        _ , d , f = next(os.walk(root_path)) #StopIteration if root_path DNE
+        joined_paths = [(class_name,os.path.join(root_path,class_name)) for class_name in d]
+        self.parent2.D = {class_name:dict() for class_name in d}
+        # Uncat
+        
+        for class_name,class_path in joined_paths:
+            _ , d , f = next(os.walk(class_path))
+            f = list(filter(self.filter_images , f))
+            first_category = self.parent2.Categories['tuple_categories'][0]
+            self.parent2.D[class_name][first_category] = dict( images = f , count = len(f) , path = class_path )
+            # REST of categories
+            # ONCE to guard against UNIX cases-sensitive folder names
+            for cat in self.parent2.Categories['tuple_categories'][1:]:
+                if cat_lower := cat.lower() in d:
+                    if cat not in self.parent2.D[class_name]:
+                        new_path = os.path.join(class_path,cat_lower)
+                        _ , _ , f = next(os.walk(new_path))
+                        f = list(filter(self.filter_images , f))
+                        self.parent2.D[class_name][cat] = dict(images = f , count = len(f) , path = new_path)
+                else:
+                    self.parent2.D[class_name][cat] = dict(images = [] , count = None , path = None)
+        
 class Middle:
     def __init__(self,parent,**kw):
         self.parent=parent
@@ -545,18 +616,23 @@ class MyScale(ttk.Scale , MyGrid):
 
 class Left(MyFrame):
     def __init__(self,parent,**kw):
+        self.Categories = kw.pop('Categories')
         self.button_text = kw.pop('button_text','Button')
         self.grid_data = kw.pop('grid_data',dict())
-        self.tree_args = kw.pop('Tree_args',dict())
+        self.tree_args = kw.pop('tree_args',dict())
+        self.props = kw.pop('props',dict())
+        self.right_instance = None
+        self.D = dict()
         super().__init__(parent,**kw)
+        self.img_loading=ImageLoading(root,parent2 = self)
         #self['text']='Left'
         #self['labelanchor']='s'
         
         # button , label , tree
         self.class_label_frame = MyLabelFrame(self,text='Selected Class',labelanchor='n')
         self.class_label = MyLabel(self.class_label_frame,text = '',anchor='center')
-        self.tree = Tree(self , label = self.class_label , **self.tree_args)
-        self.button = MyButton(self, text = self.button_text , command = self.tree.open_file_dialog)  
+        self.tree = Tree(self, parent2 = self ,  **self.tree_args)
+        self.button = MyButton(self, text = self.button_text , command = self.open_file_dialog)  
         if self.grid_data:
             self.my_grid(**self.grid_data)
         self.class_label.my_grid(row = (1,) , column = (1,) , sti = 'nswe')
@@ -569,36 +645,275 @@ class Left(MyFrame):
         self.button.config_column(1,id = '1', weight = 1)
         if type(parent)==MyPanedwindow:
             parent.add(self)
-
-class Gallery(Canvas):
+    
+    def set_right_instance(self,r):
+        self.right_instance = r
+        self.right_instance.set_parent2(self)
+    
+    def tree_has_resolved(self):
+        #print('Left->tree_has_resolved')
+        self.right_instance.setup_galleries() # reads self.parent2.D 
+    
+    def open_file_dialog(self):
+        #path = filedialog.askdirectory(initialdir = '.', title = '')
+        #path = 'C:/Users/abdullah/Documents/a-tf-classifier/576013_1042828_bundle_archive/COVID-19 Radiography Database'
+        path = '/home/abdullah/eclipse-workspace'
+        self.tree.resolve(path) # Modifies self.D from Tree instance
+        self.img_loading.setup() # CORE
+        self.img_loading.show()
+        self.start_loading(True) # close_after = True
+    
+    def thread_start_loading(self,close_after=False):
+        for name,sub_dict in self.D.items():
+            for cat_name,cat in sub_dict.items():
+                self.D[name][cat_name]['image_objects'] = dict()
+                self.D[name][cat_name]['image_tk_objects'] = dict()
+                self.D[name][cat_name]['thumb_tk_objects'] = dict()
+                if max_count := cat['count']: # B.C. naively join the path and file names list does not always work.
+                    self.img_loading.set_label1(name,text=cat_name)
+                    self.img_loading.set_progress(name,maximum=max_count)
+                    parent_path = cat['path']
+                    for NAME , PATH in  ((f,os.path.join(parent_path,f)) for f in cat['images']):
+                        tmp = self.D[name][cat_name]['image_objects'][NAME] = Image.open(PATH)
+                        self.D[name][cat_name]['image_tk_objects'][NAME] = ImageTk.PhotoImage(tmp)
+                        self.D[name][cat_name]['thumb_tk_objects'][NAME] = ImageTk.PhotoImage(tmp.resize(self.props['thumbnail_size']))
+                        self.img_loading.set_label2_progress(name,text=NAME)
+            self.img_loading.minimize(name)
+        #print(self.tree.D)
+        if close_after:
+            self.img_loading.hide()
+    
+    def start_loading(self,close_after = False):
+        args=[close_after]
+        threading.Thread(target=self.thread_start_loading,args=args).start()
+        
+    def class_selected(self,text):
+        self.class_label['text']=f'"{text}"'
+        # Should trigger right_instance
+        self.right_instance.class_selected(text)
+    def clear_class_name(self):
+        self.class_label['text']=''
+    
+class Gallery(MyLabelFrame):
     def __init__(self,parent,**kw):
-        provide_progress = kw.pop('provide_progress')
-        provide_scale = kw.pop('provide_scale')
+        for i in (('thumbnail_size',(50,50)),('provide_scrolls','v'),'provide_progress','provide_scale','max_class_name','class_name','cat_name'):
+            j = ((i,),i)[type(i) == tuple]
+            setattr(self, j[0], kw.pop(*j))
         super().__init__(parent,**kw)
-        if provide_progress:
+        self.internal_canvas = Canvas(self ,provide_scrolls = {'orient':'v','parent':self,
+                                                                'v_grid_data': {'row':(1,2),'column':(4,),'sti':'ens'} })
+        self.D = None
+        self.internal_canvas.config_column(1,2,3,4,id='1,2,3,4',weight=(1,1,1,0))
+        self.internal_canvas.config_row(1,2,id='1,2',weight=(0,1))
+        self.menubutton_actions = MyMenuButton(self , provide_menu = True , text = 'Actions')
+        self.menubutton_actions.my_grid(row=(1,),column=(3,),sti = 'e')
+        self.internal_canvas.my_grid(row=(2,),column=(1,3),sti = 'nswe')
+        if self.provide_progress:
             self.progress = MyProgressBar(self,orient='horizontal',provide_variable=True)
-        if provide_scale:
+            self.progress.my_grid(row=(1,),column=(1,4),sti = 'we')
+            self.progress.grid_remove()
+        if self.provide_scale:
             self.scale = MyScale(self)
+            self.scale_label = MyLabel(self,text = '1 x 1')
+            self.scale.my_grid(row=(1,),column=(1,),sti = 'we')
+            self.scale_label.my_grid(row=(1,),column=(2,),sti = 'we')
+        
+        self.countofilename = dict() # CORE dict: key:filename value:count
+        self.imgs = dict() #CORE dict:  key:count (from 1) value:PILLOW objects
+        self.imgs_count=0
+        self.selected_count=0
+        self.set_title()
+    
+    def set_title(self):
+        t = '{:4} {:{max_count}} images | {:4} selected'.format(self.imgs_count,self.cat_name,self.selected_count,max_count=self.max_class_name)
+        
+        self['text']=t
+    
+    def hide(self):
+        self.grid_remove()
+        
+    def show(self):
+        self.grid()
+    
+       
         
 class Right(MyFrame):
     def __init__(self,parent,**kw):
+        self.props = kw.pop('props',dict())
+        self.props.setdefault('current class name',None)
+        self.props.setdefault('gallery title template',None)
+        self.props.setdefault('width stored',None)
+        self.props.setdefault('next row',None)
+        self.parent2 = None
+        #self.thumbnail_size = (50,50)
         super().__init__(parent,**kw)
         if type(parent)==MyPanedwindow:
             parent.add(self)
-        self.gallery1 = Gallery(self,provide_progress=True,
-                                provide_scale=True,
-                                grid_data = {'row':(1,),'column':(1,2),'sti':'nswe'},
-                                provide_scrolls={'orient':'v','v_grid_data':{'row':(1,),'column':(1,),'sti':'ens'}}) #uncat
-        self.gallery1.config_column(1,2,id='1,2',weight=(1,0))
-        self.gallery1.config_row(1,2,3,id='1,2,3',weight=1)
-        self.gallery2 = Gallery(self,provide_progress=True,
-                                provide_scale=True,
-                                grid_data = {'row':(2,),'column':(1,2),'sti':'nswe'},
-                                provide_scrolls={'orient':'v','v_grid_data':{'row':(2,),'column':(1,),'sti':'ens'}}) #train
-        self.gallery3 = Gallery(self,provide_progress=True,
-                                provide_scale=True,
-                                grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'},
-                                provide_scrolls={'orient':'v','v_grid_data':{'row':(3,),'column':(1,),'sti':'ens'}}) #testing
+        #self.gallery_title_template=None
+        #self.count_max = len(self.supplied_categories)
+        #self.tmp_button = MyButton(self)
+        #self.tmp_button.config_column(1,2,id='1,2',weight=(1,0))
+        #self.tmp_button.config_row(1,2,3,id='1',weight=1)
+        #self.ginfo = dict() # CORE ; gallery_info 'MAPPED?';LAST X,Y
+        self.classes = dict() # CORE dict key:name value:Gallery()
+        self.bind('<Configure>',self.store_width,add='+') # + just in case
+    
+    def set_parent2(self, x ):
+        self.parent2 = x
+    
+    def store_width(self,e):
+        pass
+        #print('store_width->method',e.widget.winfo_width())
+        #self.props['width stored'] = e.widget.winfo_width()
+        #print('ACTUAL store_width',self.width_stored)
+        self.resize_canvas()
+
+    def setup_galleries(self):
+        # has self.D been inserted?
+        try:
+            self.parent2.D
+        except:
+            print('Right Instance says: "self.parent2.D" not found')
+            return
+        
+        for class_name,the_dict in self.parent2.D.items():
+            category_count = 1
+            if class_name not in self.classes:
+                self.classes[class_name] = {'mapped' : False  , 'filled':False , 'galleries': dict()}
+            for category_name,the_dict2 in the_dict.items():
+                self.classes[class_name]['galleries'][category_name] = tmp = Gallery(self,
+                                                                    class_name = class_name ,
+                                                                    cat_name = category_name , 
+                                                                    max_class_name = self.parent2.Categories['max_category_string_length'] , 
+                                                                    provide_progress = True , 
+                                                                    provide_scale = True , 
+                                                                    provide_scrolls = True)
+                tmp.internal_canvas.create_rectangle((0,0,*self.parent2.props['thumbnail_size']),stipple='gray12',fill='blue',tag='box',state='hidden')
+                tmp.internal_canvas.bind('<Button-1>',self.internal_clicked)
+                #print(tmp,category_count)
+                tmp.my_grid(row = (category_count,) , column = (1,) , sti = 'nswe')
+                #self.grid_rowconfigure(category_count, uniform = 'one' , weight = 1 )
+                tmp.config_row(category_count,id='one',weight=1)
+                tmp.config_column(1,2,id='1,2',weight=(1,0))
+                tmp.grid_remove()
+            
+                category_count += 1
+    
+    
+    def class_selected(self,the_class_name):
+        #if the_class_name is None:
+        #    return
+        #print('class_selected',the_class_name, self.classes[the_class_name])
+        
+        if self.props['current class name'] == the_class_name :
+            return
+        
+        self.props['current class name'] = the_class_name
+        # Hide All
+        for class_name , the_dict in self.classes.items():
+            for category_name , gallery in the_dict['galleries'].items():
+                #print('removing:',class_name,category_name)
+                gallery.grid_remove()
+        # Show This Class
+        for category_name , gallery in self.classes[the_class_name]['galleries'].items():
+            #print(category_name,gallery)
+            #print('showing:',the_class_name,category_name)
+            gallery.grid()
+        
+        self.after(100, lambda : self.fill_canvas() )
+        
+    def fill_canvas(self , class_name = None):
+        
+        if class_name is None:
+            class_name = self.props['current class name']
+            #print('fill_canvas',class_name, self.classes[class_name])
+            if class_name is None:
+                return
+        
+        if self.classes[class_name]['filled'] is True:
+            return
+        
+        threading.Thread(target = self.thread_fill_canvas , args = (class_name,) ).start()
+    
+    def thread_fill_canvas(self , the_class_name):# Places thumb_tk_objects image objects on 9 canvases
+    
+        sample_width = None # because when one class is selected, it mapped/width width is used, others are width=1 since they are unmapped 
+        for class_name,sub_dict in self.parent2.D.items():
+            for cat_name,the_dict in sub_dict.items():
+                gallery = self.classes[class_name]['galleries'][cat_name]
+                if the_class_name == class_name and sample_width is None:
+                    sample_width = gallery.internal_canvas.winfo_width()
+                obj = self.coords(self.parent2.props['thumbnail_size'] , sample_width )
+                count=1
+                self.parent2.D[class_name][cat_name]['canvas_id_to_filename'] = dict() # Modifies self.D from Tree instance
+                for file_name,tkimg in the_dict['thumb_tk_objects'].items():
+                    x,y = next(obj)
+                    #print(class_name,cat_name,count,x,y)
+                    canvas_id = gallery.internal_canvas.create_image(x,y,image=tkimg,anchor='nw')
+                    #gallery.internal_canvas.tag_bind(canvas_id , '<Button-1>' , lambda e: print('Clicked',e))
+                    self.parent2.D[class_name][cat_name]['canvas_id_to_filename'][canvas_id] = file_name # Modifies self.D from Tree instance
+                    count += 1
+        #print( self.parent2.D )
+            self.classes[class_name]['filled'] = True
+    def resize_canvas(self , class_name = None):
+        print('*'*100)
+        print('resize_canvas',class_name)
+        print('*'*100)
+        if class_name is None:
+            class_name = self.props['current class name']
+            if class_name is None:
+                return
+        if self.classes[class_name]['filled'] is False:
+            return
+        threading.Thread(target = self.thread_resize_canvas , args = (class_name,)).start()
+    
+    def thread_resize_canvas(self , class_name):
+        for category_name , gallery in self.classes[class_name]['galleries'].items():
+            obj = self.coords(None, gallery.internal_canvas.winfo_width() )
+            for the_id , xy in zip ( self.parent2.D[class_name][category_name]['canvas_id_to_filename'].keys() , obj ):
+                x , y = xy
+                print('thread_resize_canvas, x,y:',x,y)
+                gallery.internal_canvas.moveto(the_id, x = x , y= y)
+        
+    
+    def coords(self , thumb_size , width = None , pad=(MyGrid.full_pad,MyGrid.full_pad) ):
+        width = self.props['width stored'] if width is None else width
+        thumb_size = thumb_size if thumb_size is not None else self.parent2.props['thumbnail_size']
+        #print(thumb_size)
+        thumb_x , thumb_y = thumb_size
+        pad_x , pad_y = pad
+        per_row = math.floor( width / (thumb_x + pad_x) )
+        space_left = width - (per_row * (thumb_x + pad_x)) # should >=1 , Because per_row will be 0
+        start_x = space_left // 2
+        # Algorithm using space_left: whatever hasbeen left , divide it by 2 then make start_x
+        # print('width:',width,'per_row:',per_row,'space_left',space_left,'start_x',start_x)
+
+        y = pad_y
+        while True:
+            for x in range(start_x , start_x + ( per_row*(per_row > 0 ) + 1*(per_row <= 0) )*thumb_x , thumb_x + pad_x):
+                yield(x,y)
+            y += pad_y + thumb_y
+        
+    def coords0(self,width=None,t_size=None,count=None,start=(0,0,0),pad=(MyGrid.full_pad,MyGrid.full_pad)): #thumbnail_size
+        tx , ty = t_size
+        x1,x2,y = start
+        px , py = pad
+        i = True
+        for x in range(x1 , width - tx - px , tx ):
+            yield (x + (px,0)[i] ,y)
+            count -= 1
+            i = False
+        i = True
+        y += ty + py
+        while count > 0:
+            for x in range(x2 , width - tx - px , tx ):
+                yield (x + (px,0)[i] ,y)
+                count -= 1
+                y += ty + py
+        
+    def internal_clicked(self,e):
+        x,y = e.widget.canvasx(e.x),e.widget.canvasy(e.y)
+        print('Clicked',e.x_root,e.y_root,x,y)
         
 class Collapsible(LabelFrame):
     icon_up =   '\u2b9d'
@@ -893,7 +1208,6 @@ class KerasModel(Model):
     
 if __name__ == '__main__':
     root = MyTk(400,300,provide_menu=True)
-    
     m = Middle(root) # CORE
     #PANED = MyPanedwindow(root , grid_self = {'row':(3,),'column':(1,2),'sti':'nswe'})
 
@@ -908,13 +1222,19 @@ if __name__ == '__main__':
     MODELS = m.add_new(tabnames[1] , ModelsHome , grid_data = {'row':(3,),'column':(1,2),'sti':'nswe'} , kw_args = {'text' : tabnames[1] , 'supply_model_classes': (KerasModel,) } )
     t.config_column(1,2,id='1,2',weight=1) # CORE
     t.config_row(2,3,4,id = '2,3,4', weight = (0,1,0) ) # CORE
-    LEFT = Left(PANED,button_text = 'Open File Dialog') # CORE
+    Categories_Tuple = ('Uncategorized','Training','Validation') # CORE
+    Categories = {'count_categories':[(j+1,i) for j,i in enumerate(Categories_Tuple)],
+                   'tuple_categories':Categories_Tuple[:],
+                   'max_category_string_length':max([len(i) for i in Categories_Tuple])
+                   }
+    LEFT = Left(PANED,button_text = 'Open File Dialog' , Categories = Categories , props = {'thumbnail_size' : (50,50)}) # CORE
     RIGHT = Right(PANED) # CORE
+    LEFT.set_right_instance(RIGHT)
     root.add_sizegrip((1,),(1,100))
     root.add_sizegrip((4,),(1,100))
     root.add_sub_menu('initial', 'root',label='Initial')
     root.add_sub_menu('ui settings', 'root',label='UI Settings')
-    root.menu_add_command('initial',label='Select Classes Dir.',command=LEFT.tree.open_file_dialog)
+    root.menu_add_command('initial',label='Select Classes Dir.',command=LEFT.open_file_dialog)
     root.menu_add_checkbutton('ui settings',label='Upper Sizegrip',provide_variable={'type':'bool','value':1,'hide_sizegrip':1})
     root.menu_add_checkbutton('ui settings',label='Lower Sizegrip',provide_variable={'type':'bool','value':1,'hide_sizegrip':4})
     root.menu_add_separator('ui settings')
